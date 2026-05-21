@@ -42,7 +42,6 @@ export async function refreshRatesAction() {
         rate_date: today,
         usd_ves_paralelo: rates.usd_ves_paralelo,
         usd_ves_bcv: rates.usd_ves_bcv,
-        usd_ves_binance: rates.usd_ves_binance,
         usd_cop: rates.usd_cop,
         source: 'manual',
       },
@@ -63,6 +62,59 @@ export async function refreshRatesAction() {
     rates: data,
     fetched_at: rates.fetched_at,
   };
+}
+
+/**
+ * Actualiza solo la tasa personalizada (rino_cop_ves) para el día actual.
+ * Esta tasa es manual y la define el admin — representa cuántos pesos
+ * colombianos equivalen a 1 bolívar (ej. 5.5 COP por 1 Bs).
+ *
+ * El precio final en Bs se calcula como: Math.ceil(precio_cop / rino_cop_ves).
+ */
+export async function updateCustomRateAction(value) {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: 'No autenticado' };
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('role')
+    .eq('id', user.id)
+    .single();
+
+  if (profile?.role !== 'admin') {
+    return { ok: false, error: 'Solo administradores pueden modificar la tasa personalizada' };
+  }
+
+  const rate = Number(value);
+  if (!Number.isFinite(rate) || rate <= 0) {
+    return { ok: false, error: 'Tasa inválida — debe ser un número mayor a cero' };
+  }
+
+  const service = createServiceClient();
+  const today = new Date().toISOString().slice(0, 10);
+
+  const { data, error } = await service
+    .from('exchange_rates')
+    .upsert(
+      {
+        rate_date: today,
+        rino_cop_ves: rate,
+        source: 'manual',
+      },
+      { onConflict: 'rate_date' }
+    )
+    .select()
+    .single();
+
+  if (error) return { ok: false, error: error.message };
+
+  revalidateTag('rates');
+  revalidatePath('/tasas');
+  revalidatePath('/dashboard');
+  revalidatePath('/pos');
+
+  return { ok: true, rates: data };
 }
 
 /**
@@ -101,7 +153,6 @@ export async function ensureFreshRates(maxAgeMinutes = 60) {
         rate_date: today,
         usd_ves_paralelo: rates.usd_ves_paralelo,
         usd_ves_bcv: rates.usd_ves_bcv,
-        usd_ves_binance: rates.usd_ves_binance,
         usd_cop: rates.usd_cop,
         source: 'auto',
       },

@@ -1,13 +1,30 @@
-export default function Page() {
+import { redirect } from 'next/navigation';
+import { createClient } from '@/lib/supabase/server';
+import { getCurrentProfile } from '@/lib/auth';
+import SuppliersClient from '@/components/SuppliersClient';
+
+export const dynamic = 'force-dynamic';
+
+export default async function ProveedoresPage() {
+  const profile = await getCurrentProfile();
+  if (!profile) redirect('/login');
+  // Solo admin/supervisor operan con proveedores
+  if (profile.role !== 'admin' && profile.role !== 'supervisor') {
+    redirect('/dashboard');
+  }
+
+  const supabase = createClient();
+
+  const [suppliersRes, kpisRes] = await Promise.all([
+    supabase.from('v_supplier_stats').select('*').order('name'),
+    supabase.from('v_suppliers_kpis').select('*').single(),
+  ]);
+
   return (
-    <div className="space-y-4">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">Proveedores</h1>
-        <p className="text-sm text-slate-500 dark:text-slate-400">Módulo previsto para la Semana 3 del roadmap.</p>
-      </div>
-      <div className="card p-8 text-center text-slate-400 dark:text-slate-500">
-        <p>Esta sección estará disponible en la próxima fase.</p>
-      </div>
-    </div>
+    <SuppliersClient
+      initialSuppliers={suppliersRes.data || []}
+      initialKpis={kpisRes.data || {}}
+      role={profile.role}
+    />
   );
 }

@@ -70,3 +70,29 @@ body {
 .dark ::-webkit-scrollbar-track { background: #0f172a; }
 .dark ::-webkit-scrollbar-thumb { background: #334155; border-radius: 5px; }
 .dark ::-webkit-scrollbar-thumb:hover { background: #475569; }
+
+/* Estilos para impresión: ocultar nav, sidebars y elementos .print:hidden */
+@media print {
+  /* Forzar fondo blanco y reset de colores oscuros */
+  html, body, .dark {
+    background: white !important;
+    color: black !important;
+  }
+  /* Ocultar la barra superior global del dashboard */
+  header.sticky { display: none !important; }
+  /* Ajustar márgenes de la página impresa */
+  @page {
+    margin: 1.5cm 1cm;
+    size: portrait;
+  }
+  /* Anti-corte de tablas en medio de filas */
+  tr, td, th { page-break-inside: avoid; }
+  table { page-break-inside: auto; }
+  /* Las cards salen sin sombra ni borde grueso */
+  .card {
+    box-shadow: none !important;
+    border-color: #e2e8f0 !important;
+  }
+  /* Recharts a veces se imprime cortado: limitar altura */
+  .recharts-wrapper { max-width: 100% !important; }
+}

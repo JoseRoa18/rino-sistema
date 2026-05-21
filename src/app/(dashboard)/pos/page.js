@@ -1,11 +1,13 @@
 import { createClient } from '@/lib/supabase/server';
 import POSInterface from '@/components/pos/POSInterface';
 import { getCachedCategories, getCachedLatestRate } from '@/lib/cached-data';
+import { getCurrentProfile } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
 export default async function POSPage() {
   const supabase = createClient();
+  const profile = await getCurrentProfile();
 
   // Productos completos para búsqueda + más vendidos para acceso rápido.
   // Categorías y tasa vienen de cache (5-10 min) - casi instantáneo.
@@ -15,7 +17,11 @@ export default async function POSPage() {
     supabase.from('v_top_sold_products').select('*'),
     getCachedCategories(),
     getCachedLatestRate(),
-    supabase.from('customers').select('id, name').eq('active', true).order('name'),
+    supabase
+      .from('customers')
+      .select('id, name, is_internal')
+      .eq('active', true)
+      .order('name'),
   ]);
 
   return (
@@ -30,6 +36,7 @@ export default async function POSPage() {
         initialCategories={categories || []}
         initialRates={rate || {}}
         initialCustomers={customersRes.data || []}
+        role={profile?.role || 'cajero'}
       />
     </div>
   );

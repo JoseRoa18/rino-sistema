@@ -34,22 +34,60 @@ export function priceWithMargin(costUsd, marginPct) {
 
 /**
  * Convierte un monto USD a otra moneda usando la tasa correspondiente.
+ *
+ * VES con tasa personalizada (Rino COP→VES):
+ *   - Si existe `rino_cop_ves` y `usd_cop`, calcula: USD → COP → VES con
+ *     redondeo hacia arriba al bolívar entero.
+ *   - Esto refleja el flujo real del negocio en frontera: el cliente piensa
+ *     en pesos y paga en bolívares, así que el precio final en Bs siempre
+ *     redondea hacia arriba.
+ *   - Si no hay tasa personalizada, fallback al paralelo USD/VES.
  */
 export function convertFromUsd(amountUsd, currency, rates) {
   if (currency === 'USD') return amountUsd;
-  if (currency === 'VES') return amountUsd * (rates?.usd_ves_paralelo ?? 0);
   if (currency === 'COP') return amountUsd * (rates?.usd_cop ?? 0);
+  if (currency === 'VES') {
+    const rinoRate = Number(rates?.rino_cop_ves);
+    const usdCop   = Number(rates?.usd_cop);
+    if (rinoRate > 0 && usdCop > 0) {
+      const cop = amountUsd * usdCop;
+      return Math.ceil(cop / rinoRate);
+    }
+    return amountUsd * (Number(rates?.usd_ves_paralelo) || 0);
+  }
   return amountUsd;
 }
 
 /**
  * Convierte un monto en cualquier moneda a USD.
+ * Para VES, intenta invertir la conversión por tasa personalizada
+ * (VES → COP → USD); si no hay, usa paralelo.
  */
 export function convertToUsd(amount, currency, rates) {
   if (currency === 'USD') return amount;
-  if (currency === 'VES') return amount / (rates?.usd_ves_paralelo || 1);
   if (currency === 'COP') return amount / (rates?.usd_cop || 1);
+  if (currency === 'VES') {
+    const rinoRate = Number(rates?.rino_cop_ves);
+    const usdCop   = Number(rates?.usd_cop);
+    if (rinoRate > 0 && usdCop > 0) {
+      const cop = amount * rinoRate;
+      return cop / usdCop;
+    }
+    return amount / (Number(rates?.usd_ves_paralelo) || 1);
+  }
   return amount;
+}
+
+/**
+ * Convierte pesos colombianos directamente a bolívares usando la tasa
+ * personalizada Rino con redondeo hacia arriba.
+ *
+ * Ej: copToVes(5000, 5.5) → 910 (resultado real 909.09, redondeado al alza)
+ */
+export function copToVes(amountCop, rinoCopVes) {
+  const rate = Number(rinoCopVes);
+  if (!rate || rate <= 0) return 0;
+  return Math.ceil(Number(amountCop || 0) / rate);
 }
 
 /**

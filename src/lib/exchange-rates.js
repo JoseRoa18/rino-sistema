@@ -31,7 +31,10 @@ function findRate(arr, keywords) {
 
 /**
  * Trae las cotizaciones del bolívar desde DolarApi en una sola llamada.
- * Devuelve { bcv, paralelo, binance, fechaActualizacion }.
+ * Devuelve { bcv, paralelo, fechaActualizacion }.
+ *
+ * Nota: La tasa Binance P2P se descontinuó del sistema en favor de la
+ * tasa personalizada Rino (rino_cop_ves) editable manualmente por admin.
  */
 async function fetchVeRates() {
   try {
@@ -43,12 +46,11 @@ async function fetchVeRates() {
     return {
       bcv: findRate(arr, ['oficial', 'bcv']),
       paralelo: findRate(arr, ['paralelo']),
-      binance: findRate(arr, ['binance', 'bitcoin', 'p2p']),
       fechaActualizacion: arr[0]?.fechaActualizacion ?? null,
     };
   } catch (err) {
     console.error('[exchange] DolarApi VE falló:', err.message);
-    return { bcv: null, paralelo: null, binance: null, fechaActualizacion: null };
+    return { bcv: null, paralelo: null, fechaActualizacion: null };
   }
 }
 
@@ -87,13 +89,13 @@ async function fetchCoRate() {
 
 /**
  * Trae todas las tasas en paralelo. Usado por el cron y el botón manual.
+ * No incluye `rino_cop_ves` — esa se edita manualmente por el admin.
  */
 export async function fetchAllRates() {
   const [ve, cop] = await Promise.all([fetchVeRates(), fetchCoRate()]);
   return {
     usd_ves_paralelo: ve.paralelo,
     usd_ves_bcv: ve.bcv,
-    usd_ves_binance: ve.binance, // referencia (no se persiste aún)
     usd_cop: cop,
     source_updated_at: ve.fechaActualizacion,
     fetched_at: new Date().toISOString(),

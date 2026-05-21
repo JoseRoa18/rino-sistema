@@ -44,7 +44,6 @@ async function handler(request) {
         rate_date: today,
         usd_ves_paralelo: rates.usd_ves_paralelo,
         usd_ves_bcv: rates.usd_ves_bcv,
-        usd_ves_binance: rates.usd_ves_binance,
         usd_cop: rates.usd_cop,
         source: 'cron',
       },

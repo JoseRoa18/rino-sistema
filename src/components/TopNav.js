@@ -6,7 +6,7 @@ import { useState, useRef, useEffect } from 'react';
 import {
   LayoutDashboard, ShoppingCart, Package, TrendingUp, Users,
   Boxes, FileText, CreditCard, Truck, LogOut, Menu, X, ChevronDown,
-  Receipt, Wallet, UserCog, MoreHorizontal,
+  Receipt, Wallet, UserCog, MoreHorizontal, Home,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import ThemeToggle from './ThemeToggle';
@@ -27,8 +27,9 @@ const SECONDARY_ITEMS = [
   { href: '/inventario', label: 'Inventario',   icon: Boxes,           roles: ['admin', 'supervisor'] },
   { href: '/clientes',   label: 'Clientes',     icon: Users,           roles: ['admin', 'supervisor', 'cajero'] },
   { href: '/creditos',   label: 'Créditos',     icon: CreditCard,      roles: ['admin', 'supervisor'] },
-  { href: '/proveedores',label: 'Proveedores',  icon: Truck,           roles: ['admin'],                       disabled: true },
-  { href: '/reportes',   label: 'Reportes',     icon: FileText,        roles: ['admin', 'supervisor'],         disabled: true },
+  { href: '/proveedores',label: 'Proveedores',  icon: Truck,           roles: ['admin', 'supervisor'] },
+  { href: '/familia',    label: 'Familia',      icon: Home,            roles: ['admin', 'supervisor'] },
+  { href: '/reportes',   label: 'Reportes',     icon: FileText,        roles: ['admin', 'supervisor'] },
   { href: '/usuarios',   label: 'Usuarios',     icon: UserCog,         roles: ['admin'] },
 ];
 

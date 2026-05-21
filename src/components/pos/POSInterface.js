@@ -9,7 +9,9 @@ import {
   ListChecks, Lock,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
-import { formatMoney, convertFromUsd } from '@/lib/pricing';
+import { formatMoney, convertFromUsd, copToVes } from '@/lib/pricing';
+import CustomerForm from '../CustomerForm';
+import { createCustomerAction } from '@/app/(dashboard)/clientes/actions';
 
 const PAYMENT_METHODS = [
   { value: 'efectivo',      label: 'Efectivo',     icon: Banknote },
@@ -35,12 +37,13 @@ export default function POSInterface({
   initialCategories,
   initialRates,
   initialCustomers,
+  role,
 }) {
   const supabase = createClient();
   const [products] = useState(initialProducts || []);
   const [bestSellers] = useState(initialBestSellers || []);
   const [categories] = useState(initialCategories || []);
-  const [customers] = useState(initialCustomers || []);
+  const [customers, setCustomers] = useState(initialCustomers || []);
   const [rates] = useState(initialRates || {});
 
   const [search, setSearch] = useState('');
@@ -59,6 +62,7 @@ export default function POSInterface({
   const [parkedSales, setParkedSales] = useState([]);
 
   const [showCustomerPicker, setShowCustomerPicker] = useState(false);
+  const [showNewCustomerForm, setShowNewCustomerForm] = useState(false);
   const [showDiscountModal, setShowDiscountModal] = useState(false);
   const [showNoteModal, setShowNoteModal] = useState(false);
   const [showParkedModal, setShowParkedModal] = useState(false);
@@ -145,23 +149,37 @@ export default function POSInterface({
     return counts;
   }, [products]);
 
+  // selectedCustomer / isFamilyMode se calculan ANTES de `computed` porque
+  // `computed` los necesita en su useMemo.
+  const selectedCustomer = customers.find((c) => c.id === customerId) || null;
+  const isFamilyMode     = !!selectedCustomer?.is_internal;
+  const canFamily        = role === 'admin' || role === 'supervisor';
+
   const computed = useMemo(() => {
-    const subtotalUsd = cart.reduce(
-      (acc, it) => acc + Number(it.product.price_usd || 0) * it.qty,
-      0
-    );
-    const discountAmount = Math.round(subtotalUsd * (Number(discountPct) || 0)) / 100;
+    // En modo familia, el "subtotal" se calcula al costo, sin descuentos ni
+    // impuestos. Caso normal: precio de venta.
+    const subtotalUsd = isFamilyMode
+      ? cart.reduce((acc, it) => acc + Number(it.product.cost_avg || 0) * it.qty, 0)
+      : cart.reduce((acc, it) => acc + Number(it.product.price_usd || 0) * it.qty, 0);
+
+    const discountAmount = isFamilyMode
+      ? 0
+      : Math.round(subtotalUsd * (Number(discountPct) || 0)) / 100;
     const afterDiscount = subtotalUsd - discountAmount;
-    const taxAmount = Math.round(afterDiscount * (Number(taxPct) || 0)) / 100;
+    const taxAmount = isFamilyMode
+      ? 0
+      : Math.round(afterDiscount * (Number(taxPct) || 0)) / 100;
     const totalUsd = afterDiscount + taxAmount;
+
     return {
       subtotalUsd, discountAmount, taxAmount, totalUsd,
+      familyCostUsd: isFamilyMode ? totalUsd : null,
       ves: convertFromUsd(totalUsd, 'VES', rates),
       cop: convertFromUsd(totalUsd, 'COP', rates),
       itemsLines: cart.length,
       itemsUnits: cart.reduce((acc, it) => acc + it.qty, 0),
     };
-  }, [cart, discountPct, taxPct, rates]);
+  }, [cart, discountPct, taxPct, rates, isFamilyMode]);
 
   const totalInPayCurrency = useMemo(() => {
     if (paidCurrency === 'USD') return computed.totalUsd;
@@ -315,7 +333,27 @@ export default function POSInterface({
     setDraftSaleId(`${yymm}-${random}`);
   }, []);
 
-  const selectedCustomer = customers.find((c) => c.id === customerId) || null;
+  async function handleCreateCustomer(input) {
+    const result = await createCustomerAction(input);
+    if (!result.ok) {
+      setError(result.error || 'No se pudo crear el cliente');
+      return false;
+    }
+    // Construye el objeto local con el shape que el POS espera (id, name, is_internal)
+    const newCustomer = {
+      id: result.id,
+      name: input.name,
+      is_internal: false,
+    };
+    setCustomers((prev) =>
+      [...prev, newCustomer].sort((a, b) => a.name.localeCompare(b.name, 'es'))
+    );
+    setCustomerId(result.id);
+    setShowNewCustomerForm(false);
+    setShowCustomerPicker(false);
+    setError('');
+    return true;
+  }
 
   function addToCart(product) {
     if (product.stock <= 0) return;
@@ -449,6 +487,43 @@ export default function POSInterface({
     if (cart.length === 0) return;
     setError('');
 
+    // Modo familia: ruta separada, RPC distinta, sin pago ni vuelto.
+    if (isFamilyMode) {
+      if (!canFamily) {
+        setError('Solo admin o supervisor pueden registrar consumo familiar.');
+        return;
+      }
+      setSubmitting(true);
+      const payloadFamily = {
+        notes: note || null,
+        items: cart.map((it) => ({
+          product_id: it.product.id,
+          quantity:   it.qty,
+        })),
+      };
+      const { data, error: famErr } = await supabase.rpc(
+        'register_family_consumption',
+        { payload: payloadFamily }
+      );
+      if (famErr) {
+        setError(famErr.message);
+        setSubmitting(false);
+        return;
+      }
+      setSuccess({
+        saleId: data,
+        total: computed.familyCostUsd ?? computed.totalUsd,
+        paidAmount: 0,
+        paidCurrency: 'USD',
+        breakdown: null,
+        family: true,
+      });
+      clearAll();
+      setSubmitting(false);
+      setCartOpen(false);
+      return;
+    }
+
     if (paymentMethod === 'credito' && !customerId) {
       setError('Para venta a crédito debes seleccionar un cliente.');
       return;
@@ -536,6 +611,31 @@ export default function POSInterface({
   // ===== RENDER =====
 
   return (
+    <>
+      {/* BANNER MODO FAMILIA — fuera del grid para no romper layout */}
+      {isFamilyMode && (
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border-2 border-violet-300 bg-violet-50 px-4 py-2.5 text-sm shadow-sm dark:border-violet-500/40 dark:bg-violet-500/10">
+          <div className="flex items-center gap-2 text-violet-800 dark:text-violet-300">
+            <Lock className="h-4 w-4" />
+            <span>
+              <strong>Modo consumo familiar</strong> — los productos se cobrarán
+              al <strong>precio costo</strong> y no aparecerán en reportes financieros.
+              {!canFamily && (
+                <span className="ml-1 font-semibold">
+                  Solo admin o supervisor pueden registrar.
+                </span>
+              )}
+            </span>
+          </div>
+          <button
+            onClick={() => { setCustomerId(''); setError(''); }}
+            className="text-xs font-medium text-violet-700 underline hover:text-violet-900 dark:text-violet-400 dark:hover:text-violet-200"
+          >
+            Salir del modo familia
+          </button>
+        </div>
+      )}
+
     <div className="flex flex-col gap-4 lg:grid lg:h-[calc(100vh-9rem)] lg:grid-rows-[minmax(0,1fr)_minmax(0,1fr)]">
       {/* TOP: BÚSQUEDA + GRID */}
       <div className="flex min-h-0 flex-col gap-3">
@@ -626,6 +726,7 @@ export default function POSInterface({
                   catName={catNameFn}
                   rates={rates}
                   onAdd={() => addToCart(p)}
+                  familyMode={isFamilyMode}
                 />
               ))}
             </div>
@@ -634,7 +735,9 @@ export default function POSInterface({
       </div>
 
       {/* BOTTOM (DESKTOP): CARRITO | RESUMEN | PAGO */}
-      <div className="hidden min-h-0 lg:grid lg:grid-cols-[5fr_3fr_4fr] lg:gap-4">
+      <div className={`hidden min-h-0 lg:grid lg:gap-4 ${
+        isFamilyMode ? 'lg:grid-cols-[5fr_4fr]' : 'lg:grid-cols-[5fr_3fr_4fr]'
+      }`}>
         <CartPanel
           cart={cart}
           draftSaleId={draftSaleId}
@@ -645,6 +748,7 @@ export default function POSInterface({
           showCustomerPicker={showCustomerPicker}
           onCustomerToggle={() => setShowCustomerPicker((v) => !v)}
           onCustomerSelect={(id) => { setCustomerId(id); setShowCustomerPicker(false); }}
+          onNewCustomer={() => { setShowCustomerPicker(false); setShowNewCustomerForm(true); }}
           onPark={parkCurrentSale}
           onShowParked={() => setShowParkedModal(true)}
           parkedCount={parkedSales.length}
@@ -652,15 +756,18 @@ export default function POSInterface({
           onChangeQty={changeQty}
           onSetQty={setQty}
           onRemove={removeFromCart}
+          familyMode={isFamilyMode}
         />
-        <ResumenPanel
-          computed={computed}
-          discountPct={discountPct}
-          taxPct={taxPct}
-          note={note}
-          onOpenDiscount={() => setShowDiscountModal(true)}
-          onOpenNote={() => setShowNoteModal(true)}
-        />
+        {!isFamilyMode && (
+          <ResumenPanel
+            computed={computed}
+            discountPct={discountPct}
+            taxPct={taxPct}
+            note={note}
+            onOpenDiscount={() => setShowDiscountModal(true)}
+            onOpenNote={() => setShowNoteModal(true)}
+          />
+        )}
         <PagoPanel
           paymentMethod={paymentMethod}
           onPaymentMethod={setPaymentMethod}
@@ -681,6 +788,8 @@ export default function POSInterface({
           cartCount={cart.length}
           totalUsd={computed.totalUsd}
           onCheckout={handleCheckout}
+          familyMode={isFamilyMode}
+          canFamily={canFamily}
         />
       </div>
 
@@ -716,6 +825,7 @@ export default function POSInterface({
                 showCustomerPicker={showCustomerPicker}
                 onCustomerToggle={() => setShowCustomerPicker((v) => !v)}
                 onCustomerSelect={(id) => { setCustomerId(id); setShowCustomerPicker(false); }}
+                onNewCustomer={() => { setShowCustomerPicker(false); setShowNewCustomerForm(true); }}
                 onPark={parkCurrentSale}
                 onShowParked={() => setShowParkedModal(true)}
                 parkedCount={parkedSales.length}
@@ -723,15 +833,18 @@ export default function POSInterface({
                 onChangeQty={changeQty}
                 onSetQty={setQty}
                 onRemove={removeFromCart}
+                familyMode={isFamilyMode}
               />
-              <ResumenPanel
-                computed={computed}
-                discountPct={discountPct}
-                taxPct={taxPct}
-                note={note}
-                onOpenDiscount={() => setShowDiscountModal(true)}
-                onOpenNote={() => setShowNoteModal(true)}
-              />
+              {!isFamilyMode && (
+                <ResumenPanel
+                  computed={computed}
+                  discountPct={discountPct}
+                  taxPct={taxPct}
+                  note={note}
+                  onOpenDiscount={() => setShowDiscountModal(true)}
+                  onOpenNote={() => setShowNoteModal(true)}
+                />
+              )}
               <PagoPanel
                 paymentMethod={paymentMethod}
                 onPaymentMethod={setPaymentMethod}
@@ -752,6 +865,8 @@ export default function POSInterface({
                 cartCount={cart.length}
                 totalUsd={computed.totalUsd}
                 onCheckout={handleCheckout}
+                familyMode={isFamilyMode}
+                canFamily={canFamily}
               />
             </div>
           </div>
@@ -783,17 +898,36 @@ export default function POSInterface({
         />
       )}
       {success && <SuccessModal success={success} onClose={() => setSuccess(null)} />}
+
+      {showNewCustomerForm && (
+        <CustomerForm
+          initialValue={null}
+          onClose={() => setShowNewCustomerForm(false)}
+          onSave={handleCreateCustomer}
+        />
+      )}
     </div>
+    </>
   );
 }
 
 // =========================================================================
 // ProductCard
 // =========================================================================
-function ProductCard({ product: p, rank, catName, rates, onAdd }) {
+function ProductCard({ product: p, rank, catName, rates, onAdd, familyMode }) {
   const lowStock = p.stock <= p.min_stock;
   const noStock = p.stock <= 0;
   const stockUnit = (p.unit && p.unit[0]) || 'u';
+
+  // Precio en COP: usar el guardado o calcular vía USD
+  const priceCop = Number(p.price_cop) || (Number(p.price_usd) * (Number(rates?.usd_cop) || 0));
+
+  // Precio en Bs: si hay tasa personalizada Rino, calcular dinámicamente
+  // como Math.ceil(COP / rino_cop_ves). Si no, fallback al price_ves guardado.
+  const rinoRate = Number(rates?.rino_cop_ves);
+  const priceVes = rinoRate > 0
+    ? copToVes(priceCop, rinoRate)
+    : (Number(p.price_ves) || 0);
   return (
     <button
       onClick={onAdd}
@@ -827,19 +961,37 @@ function ProductCard({ product: p, rank, catName, rates, onAdd }) {
         SKU | {p.sku || catName(p.category_id)}
       </span>
 
-      <div className="mt-auto pt-2">
-        <div className="text-lg font-bold text-emerald-700 dark:text-emerald-400">
-          {formatMoney(p.price_usd, 'USD')}
-        </div>
-        <div className="flex items-baseline gap-2 text-[10px] text-slate-500 dark:text-slate-400">
-          <span>
-            COP{' '}
-            {Number(p.price_cop || (p.price_usd * (rates.usd_cop || 0))).toLocaleString('es-CO', { maximumFractionDigits: 0 })}
+      <div className="mt-auto space-y-0.5 pt-2">
+        <div className={`flex items-baseline gap-1.5 ${
+          familyMode
+            ? 'text-violet-700 dark:text-violet-400'
+            : 'text-emerald-700 dark:text-emerald-400'
+        }`}>
+          <span className="text-lg font-bold leading-tight">
+            {familyMode
+              ? formatMoney(p.cost_avg, 'USD')
+              : formatMoney(p.price_usd, 'USD')}
           </span>
-          <span className="text-slate-300 dark:text-slate-600">|</span>
-          <span>
-            Bs.{' '}
-            {Number(p.price_ves || 0).toLocaleString('es-VE', { maximumFractionDigits: 0 })}
+          {familyMode && (
+            <span className="text-[10px] font-normal uppercase tracking-wider text-violet-500">
+              costo
+            </span>
+          )}
+        </div>
+        <div className="flex items-baseline gap-1 text-sm font-semibold leading-tight text-slate-700 dark:text-slate-300">
+          <span className="text-[10px] font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">
+            COP
+          </span>
+          <span className="tabular-nums">
+            {priceCop.toLocaleString('es-CO', { maximumFractionDigits: 0 })}
+          </span>
+        </div>
+        <div className="flex items-baseline gap-1 text-sm font-semibold leading-tight text-slate-700 dark:text-slate-300">
+          <span className="text-[10px] font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">
+            Bs.
+          </span>
+          <span className="tabular-nums">
+            {priceVes.toLocaleString('es-VE', { maximumFractionDigits: 0 })}
           </span>
         </div>
       </div>
@@ -903,9 +1055,10 @@ function IconButton({ children, onClick, title, disabled, danger }) {
 function CartPanel({
   cart, draftSaleId, itemsLines, itemsUnits,
   customer, customers, showCustomerPicker,
-  onCustomerToggle, onCustomerSelect,
+  onCustomerToggle, onCustomerSelect, onNewCustomer,
   onPark, onShowParked, parkedCount, onClearAll,
   onChangeQty, onSetQty, onRemove,
+  familyMode,
 }) {
   return (
     <div className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
@@ -927,6 +1080,7 @@ function CartPanel({
             open={showCustomerPicker}
             onToggle={onCustomerToggle}
             onSelect={onCustomerSelect}
+            onNew={onNewCustomer}
           />
           <div className="flex items-center gap-1 border-l border-slate-200 pl-2 dark:border-slate-700">
             <IconButton onClick={onPark} title="Poner venta en espera" disabled={cart.length === 0}>
@@ -1002,10 +1156,12 @@ function CartPanel({
                     </div>
                   </td>
                   <td className="px-3 py-2.5 text-right text-slate-700 dark:text-slate-300">
-                    {formatMoney(it.product.price_usd)}
+                    {formatMoney(familyMode ? it.product.cost_avg : it.product.price_usd)}
                   </td>
                   <td className="px-3 py-2.5 text-right font-semibold text-slate-900 dark:text-slate-100">
-                    {formatMoney(Number(it.product.price_usd) * it.qty)}
+                    {formatMoney(
+                      Number(familyMode ? it.product.cost_avg : it.product.price_usd) * it.qty
+                    )}
                   </td>
                   <td className="px-2 py-2.5 text-right">
                     <button onClick={() => onRemove(it.product.id)}
@@ -1024,7 +1180,7 @@ function CartPanel({
   );
 }
 
-function CustomerPill({ customer, customers, open, onToggle, onSelect }) {
+function CustomerPill({ customer, customers, open, onToggle, onSelect, onNew }) {
   const initials = customer
     ? customer.name.split(/\s+/).slice(0, 2).map((s) => s[0]).join('').toUpperCase()
     : null;
@@ -1093,6 +1249,16 @@ function CustomerPill({ customer, customers, open, onToggle, onSelect }) {
               <p className="px-2 py-3 text-center text-xs text-slate-400">Sin resultados</p>
             )}
           </div>
+
+          {onNew && (
+            <button
+              onClick={onNew}
+              className="mt-1 flex w-full items-center justify-center gap-1.5 rounded-md border border-dashed border-brand-300 px-2 py-1.5 text-xs font-medium text-brand-700 hover:bg-brand-50 dark:border-brand-500/40 dark:text-brand-400 dark:hover:bg-brand-500/10"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Nuevo cliente
+            </button>
+          )}
         </div>
       )}
     </div>
@@ -1140,12 +1306,26 @@ function ResumenPanel({ computed, discountPct, taxPct, note, onOpenDiscount, onO
         <p className="text-[10px] font-semibold uppercase tracking-wider text-emerald-700 dark:text-emerald-400">
           Total a cobrar
         </p>
-        <p className="mt-1 text-3xl font-bold text-emerald-700 dark:text-emerald-400">
+        <p className="mt-1 text-3xl font-bold leading-tight text-emerald-700 dark:text-emerald-400">
           {formatMoney(computed.totalUsd)}
         </p>
-        <div className="mt-1 flex justify-between text-[11px] text-emerald-700/70 dark:text-emerald-400/70">
-          <span>COP {Number(computed.cop).toLocaleString('es-CO', { maximumFractionDigits: 0 })}</span>
-          <span>Bs. {Number(computed.ves).toLocaleString('es-VE', { maximumFractionDigits: 2 })}</span>
+        <div className="mt-2 space-y-0.5">
+          <div className="flex items-baseline justify-between gap-2 text-emerald-700 dark:text-emerald-400">
+            <span className="text-[10px] font-medium uppercase tracking-wide opacity-70">
+              COP
+            </span>
+            <span className="text-lg font-bold tabular-nums">
+              {Number(computed.cop).toLocaleString('es-CO', { maximumFractionDigits: 0 })}
+            </span>
+          </div>
+          <div className="flex items-baseline justify-between gap-2 text-emerald-700 dark:text-emerald-400">
+            <span className="text-[10px] font-medium uppercase tracking-wide opacity-70">
+              Bs.
+            </span>
+            <span className="text-lg font-bold tabular-nums">
+              {Number(computed.ves).toLocaleString('es-VE', { maximumFractionDigits: 0 })}
+            </span>
+          </div>
         </div>
       </div>
 
@@ -1183,7 +1363,61 @@ function PagoPanel({
   changeBreakdown, changeOptions, selectedChangeKey, onSelectChangeKey,
   isSuspicious,
   error, submitting, cartCount, totalUsd, onCheckout,
+  familyMode, canFamily,
 }) {
+  // ===== Modo familia: solo total + botón "Registrar consumo" =====
+  if (familyMode) {
+    return (
+      <div className="flex min-h-0 flex-col justify-between gap-3 rounded-xl border-2 border-violet-300 bg-violet-50/50 p-4 shadow-sm dark:border-violet-500/40 dark:bg-violet-500/5">
+        <div>
+          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-violet-700 dark:text-violet-400">
+            <Lock className="h-3.5 w-3.5" />
+            Consumo familiar
+          </div>
+          <p className="mt-1 text-xs text-violet-600/80 dark:text-violet-400/80">
+            Sin cobro · descuento de stock al precio costo
+          </p>
+
+          <div className="mt-4 rounded-lg border border-violet-200 bg-white p-3 dark:border-violet-500/30 dark:bg-slate-900">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+              Costo total
+            </p>
+            <p className="mt-1 font-mono text-3xl font-bold text-violet-700 dark:text-violet-400">
+              {formatMoney(totalUsd)}
+            </p>
+            <p className="mt-1 text-[10px] text-slate-500 dark:text-slate-400">
+              {cartCount} item{cartCount === 1 ? '' : 's'} en el carrito
+            </p>
+          </div>
+
+          {!canFamily && (
+            <div className="mt-3 flex items-start gap-1.5 rounded-md bg-rose-50 p-2 text-xs text-rose-700 dark:bg-rose-500/10 dark:text-rose-400">
+              <AlertCircle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
+              <span>Solo admin o supervisor pueden registrar consumo familiar.</span>
+            </div>
+          )}
+
+          {error && (
+            <div className="mt-3 flex items-start gap-1.5 rounded-md bg-red-50 p-2 text-xs text-red-700 dark:bg-red-500/10 dark:text-red-400">
+              <AlertCircle className="h-3.5 w-3.5 flex-shrink-0" />
+              <span>{error}</span>
+            </div>
+          )}
+        </div>
+
+        <button
+          onClick={onCheckout}
+          disabled={cartCount === 0 || submitting || !canFamily}
+          className="flex w-full items-center justify-center gap-2 rounded-lg bg-violet-600 px-4 py-3.5 text-base font-bold text-white shadow-sm transition hover:bg-violet-700 active:scale-[0.99] disabled:cursor-not-allowed disabled:bg-slate-300 dark:bg-violet-600 dark:hover:bg-violet-500 dark:disabled:bg-slate-700 dark:disabled:text-slate-500"
+        >
+          <CheckCircle2 className="h-5 w-5" />
+          {submitting ? 'Registrando...' : 'Registrar consumo'}
+        </button>
+      </div>
+    );
+  }
+
+  // ===== Modo normal: pago completo =====
   return (
     <div className="flex min-h-0 flex-col gap-3 overflow-y-auto rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
       <div>
@@ -1664,29 +1898,44 @@ function ParkedSalesModal({ parkedSales, onRecall, onDelete, onClose }) {
 }
 
 function SuccessModal({ success, onClose }) {
-  const { breakdown, total, paidAmount, paidCurrency } = success;
+  const { breakdown, total, paidAmount, paidCurrency, family } = success;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
       <div className="card w-full max-w-md p-6 text-center">
-        <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400">
+        <div className={`mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full ${
+          family
+            ? 'bg-violet-100 text-violet-600 dark:bg-violet-500/15 dark:text-violet-400'
+            : 'bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400'
+        }`}>
           <CheckCircle2 className="h-8 w-8" />
         </div>
-        <h3 className="text-xl font-bold text-slate-900 dark:text-slate-100">Venta registrada</h3>
+        <h3 className="text-xl font-bold text-slate-900 dark:text-slate-100">
+          {family ? 'Consumo familiar registrado' : 'Venta registrada'}
+        </h3>
+        {family && (
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+            Stock descontado · No afecta reportes financieros
+          </p>
+        )}
 
-        <div className="mt-4 grid grid-cols-2 gap-2 rounded-lg bg-slate-50 p-3 text-left dark:bg-slate-800">
+        <div className={`mt-4 ${family ? '' : 'grid grid-cols-2 gap-2'} rounded-lg bg-slate-50 p-3 text-left dark:bg-slate-800`}>
           <div>
-            <p className="text-[10px] uppercase tracking-wide text-slate-500 dark:text-slate-400">Total</p>
+            <p className="text-[10px] uppercase tracking-wide text-slate-500 dark:text-slate-400">
+              {family ? 'Costo total' : 'Total'}
+            </p>
             <p className="font-semibold text-slate-900 dark:text-slate-100">{formatMoney(total)}</p>
           </div>
-          <div>
-            <p className="text-[10px] uppercase tracking-wide text-slate-500 dark:text-slate-400">Recibido</p>
-            <p className="font-semibold text-slate-900 dark:text-slate-100">
-              {paidCurrency === 'COP'
-                ? Number(paidAmount).toLocaleString('es-CO', { maximumFractionDigits: 0 })
-                : Number(paidAmount).toFixed(paidCurrency === 'USD' ? 2 : 0)}{' '}
-              {paidCurrency}
-            </p>
-          </div>
+          {!family && (
+            <div>
+              <p className="text-[10px] uppercase tracking-wide text-slate-500 dark:text-slate-400">Recibido</p>
+              <p className="font-semibold text-slate-900 dark:text-slate-100">
+                {paidCurrency === 'COP'
+                  ? Number(paidAmount).toLocaleString('es-CO', { maximumFractionDigits: 0 })
+                  : Number(paidAmount).toFixed(paidCurrency === 'USD' ? 2 : 0)}{' '}
+                {paidCurrency}
+              </p>
+            </div>
+          )}
         </div>
 
         {breakdown?.type === 'change' && (
