@@ -3,7 +3,7 @@
 import { useState, useTransition, useMemo } from 'react';
 import {
   RefreshCw, TrendingUp, TrendingDown, BarChart3, Pencil,
-  Check, X, Settings, Info,
+  Check, X, Settings,
 } from 'lucide-react';
 import {
   refreshRatesAction,
@@ -183,21 +183,6 @@ export default function RatesClient({ initialRates, role }) {
           accent="violet"
         />
       </div>
-
-      {/* Explicación del cálculo */}
-      {today?.rino_cop_ves && (
-        <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
-          <Info className="mt-0.5 h-4 w-4 flex-shrink-0" />
-          <div>
-            <strong>Cómo se aplica:</strong> el precio en Bs se calcula dividiendo
-            el precio en COP entre la tasa personalizada y redondeando hacia arriba.
-            <br />
-            Ejemplo: <code className="rounded bg-amber-100 px-1 dark:bg-amber-500/20">
-              {exampleCop.toLocaleString('es-CO')} COP ÷ {Number(today.rino_cop_ves).toFixed(2)} = {(exampleCop / Number(today.rino_cop_ves)).toFixed(2)} → {examplePreview} Bs
-            </code>
-          </div>
-        </div>
-      )}
 
       <div className="card overflow-hidden">
         <div className="border-b border-slate-200 p-4 dark:border-slate-700">
