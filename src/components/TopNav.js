@@ -11,6 +11,7 @@ import {
 import { createClient } from '@/lib/supabase/client';
 import ThemeToggle from './ThemeToggle';
 import GlobalSearch from './GlobalSearch';
+import RinoLogo from './RinoLogo';
 
 // Items principales — siempre visibles en la barra
 const PRIMARY_ITEMS = [
@@ -141,16 +142,21 @@ export default function TopNav({ profile, rate }) {
             <Menu className="h-5 w-5" />
           </button>
 
-          <Link href={role === 'cajero' ? '/pos' : '/dashboard'} className="flex flex-shrink-0 items-center gap-2">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-600 text-white">
-              <span className="text-lg font-bold">R</span>
-            </div>
-            <div className="hidden sm:block">
-              <p className="text-sm font-semibold leading-none text-slate-900 dark:text-slate-100">
-                Sistema Rino
+          <Link
+            href={role === 'cajero' ? '/pos' : '/dashboard'}
+            className="flex flex-shrink-0 items-center gap-2"
+            aria-label="Inicio"
+          >
+            <RinoLogo
+              variant="icon"
+              iconClassName="h-9 w-9 text-slate-900 dark:text-slate-100"
+            />
+            <div className="hidden leading-none sm:block">
+              <p className="text-base font-bold tracking-tight text-slate-900 dark:text-slate-100">
+                Rino
               </p>
-              <p className="mt-0.5 text-[10px] leading-none text-slate-500 dark:text-slate-400">
-                Gestión comercial
+              <p className="mt-0.5 text-[9px] font-medium uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
+                Sistema · Plataforma
               </p>
             </div>
           </Link>
@@ -284,12 +290,12 @@ export default function TopNav({ profile, rate }) {
           />
           <div className="relative flex h-full w-72 flex-col bg-white shadow-xl dark:bg-slate-900">
             <div className="flex h-16 items-center justify-between border-b border-slate-200 px-4 dark:border-slate-700">
-              <div className="flex items-center gap-2">
-                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-600 text-white">
-                  <span className="text-lg font-bold">R</span>
-                </div>
-                <span className="font-semibold text-slate-900 dark:text-slate-100">Sistema Rino</span>
-              </div>
+              <RinoLogo
+                variant="mark"
+                iconClassName="h-9 w-9 text-slate-900 dark:text-slate-100"
+                textClassName="text-base font-bold tracking-tight text-slate-900 dark:text-slate-100"
+                subtitleClassName="mt-0.5 text-[9px] font-medium uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400"
+              />
               <button
                 onClick={() => setMobileOpen(false)}
                 className="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-300"
