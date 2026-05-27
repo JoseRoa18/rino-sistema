@@ -57,7 +57,6 @@ function PriceInput({ label, value, onChange, currency, step, sourceCurrency, ha
 export default function ProductForm({ product, categories, rates, onClose, onSaved, onDelete }) {
   const supabase = createClient();
   const [form, setForm] = useState({
-    sku: product?.sku || '',
     name: product?.name || '',
     description: product?.description || '',
     category_id: product?.category_id || '',
@@ -229,7 +228,6 @@ export default function ProductForm({ product, categories, rates, onClose, onSav
     setSaving(true);
 
     const payload = {
-      sku: form.sku || null,
       name: form.name,
       description: form.description || null,
       category_id: form.category_id || null,
@@ -296,30 +294,20 @@ export default function ProductForm({ product, categories, rates, onClose, onSav
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4 p-4">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div>
-              <label className="label">SKU</label>
-              <input
-                className="input"
-                value={form.sku}
-                onChange={(e) => update('sku', e.target.value)}
-              />
-            </div>
-            <div>
-              <label className="label">Categoría</label>
-              <select
-                className="input"
-                value={form.category_id}
-                onChange={(e) => update('category_id', e.target.value)}
-              >
-                <option value="">Sin categoría</option>
-                {categories.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+          <div>
+            <label className="label">Categoría</label>
+            <select
+              className="input"
+              value={form.category_id}
+              onChange={(e) => update('category_id', e.target.value)}
+            >
+              <option value="">Sin categoría</option>
+              {categories.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
           </div>
 
           <div>
