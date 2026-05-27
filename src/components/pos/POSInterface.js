@@ -183,24 +183,53 @@ export default function POSInterface({
   const computed = useMemo(() => {
     // En modo familia, el "subtotal" se calcula al costo, sin descuentos ni
     // impuestos. Caso normal: precio de venta.
+    const usdRate = Number(rates?.usd_cop) || 0;
+    const rinoRate = Number(rates?.rino_cop_ves) || 0;
+    const paraleloRate = Number(rates?.usd_ves_paralelo) || 0;
+
     const subtotalUsd = isFamilyMode
       ? cart.reduce((acc, it) => acc + Number(it.product.cost_avg || 0) * it.qty, 0)
       : cart.reduce((acc, it) => acc + Number(it.product.price_usd || 0) * it.qty, 0);
 
-    const discountAmount = isFamilyMode
-      ? 0
-      : Math.round(subtotalUsd * (Number(discountPct) || 0)) / 100;
+    // COP: sumamos el price_cop GUARDADO de cada producto (es el que ve el
+    // cliente en la tarjeta y el que se cobra). Solo cae a USD*tasa cuando
+    // un producto no tenga price_cop guardado.
+    const subtotalCop = isFamilyMode
+      ? subtotalUsd * usdRate
+      : cart.reduce((acc, it) => {
+          const cop = Number(it.product.price_cop)
+            || (Number(it.product.price_usd) * usdRate);
+          return acc + cop * it.qty;
+        }, 0);
+
+    const discountPctNum = Number(discountPct) || 0;
+    const taxPctNum = Number(taxPct) || 0;
+
+    // Descuento e IVA proporcionales en cada moneda
+    const discountAmount = isFamilyMode ? 0 : Math.round(subtotalUsd * discountPctNum) / 100;
     const afterDiscount = subtotalUsd - discountAmount;
-    const taxAmount = isFamilyMode
-      ? 0
-      : Math.round(afterDiscount * (Number(taxPct) || 0)) / 100;
+    const taxAmount = isFamilyMode ? 0 : Math.round(afterDiscount * taxPctNum) / 100;
     const totalUsd = afterDiscount + taxAmount;
+
+    const discountAmountCop = isFamilyMode ? 0 : Math.round(subtotalCop * discountPctNum) / 100;
+    const afterDiscountCop = subtotalCop - discountAmountCop;
+    const taxAmountCop = isFamilyMode ? 0 : Math.round(afterDiscountCop * taxPctNum) / 100;
+    const totalCop = afterDiscountCop + taxAmountCop;
+
+    // Bs.: si hay tasa personalizada Rino → COP/rino_rate redondeado arriba.
+    //      Si no → USD × paralelo (fallback).
+    let totalVes;
+    if (rinoRate > 0 && totalCop > 0) {
+      totalVes = Math.ceil(totalCop / rinoRate);
+    } else {
+      totalVes = totalUsd * paraleloRate;
+    }
 
     return {
       subtotalUsd, discountAmount, taxAmount, totalUsd,
       familyCostUsd: isFamilyMode ? totalUsd : null,
-      ves: convertFromUsd(totalUsd, 'VES', rates),
-      cop: convertFromUsd(totalUsd, 'COP', rates),
+      ves: totalVes,
+      cop: totalCop,
       itemsLines: cart.length,
       itemsUnits: cart.reduce((acc, it) => acc + it.qty, 0),
     };
@@ -971,12 +1000,14 @@ function ProductCard({ product: p, rank, catName, rates, onAdd, familyMode }) {
   // Precio en COP: usar el guardado o calcular vía USD
   const priceCop = Number(p.price_cop) || (Number(p.price_usd) * (Number(rates?.usd_cop) || 0));
 
-  // Precio en Bs: si hay tasa personalizada Rino, calcular dinámicamente
-  // como Math.ceil(COP / rino_cop_ves). Si no, fallback al price_ves guardado.
+  // Precio en Bs:
+  //   - Si hay tasa personalizada Rino → Math.ceil(COP / rino_cop_ves)
+  //   - Si no                          → USD × paralelo (regla del negocio)
   const rinoRate = Number(rates?.rino_cop_ves);
+  const paraleloRate = Number(rates?.usd_ves_paralelo) || 0;
   const priceVes = rinoRate > 0
     ? copToVes(priceCop, rinoRate)
-    : (Number(p.price_ves) || 0);
+    : Number(p.price_usd) * paraleloRate;
   return (
     <button
       onClick={onAdd}
