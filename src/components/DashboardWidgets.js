@@ -10,6 +10,7 @@ import {
 } from 'recharts';
 import Link from 'next/link';
 import { formatMoney } from '@/lib/pricing';
+import { formatShortDateTime } from '@/lib/dates';
 import SaleDetailModal from './SaleDetailModal';
 
 const PAYMENT_META = {
@@ -335,7 +336,7 @@ function RecentSalesCard({ sales, onRowClick }) {
                       </span>
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 text-sm text-slate-600 dark:text-slate-400">
-                      {new Date(s.created_at).toLocaleString('es-VE', { dateStyle: 'short', timeStyle: 'short' })}
+                      {formatShortDateTime(s.created_at)}
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 text-right text-sm font-semibold text-slate-900 dark:text-slate-100">
                       {formatMoney(s.total_usd)}

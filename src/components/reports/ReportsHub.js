@@ -14,6 +14,7 @@ import KPICard from '../KPICard';
 import Sparkline from '../Sparkline';
 import PageHeader from '../PageHeader';
 import { formatMoney } from '@/lib/pricing';
+import { normalizeSpaces } from '@/lib/dates';
 
 const PAYMENT_LABELS = {
   efectivo:      'Efectivo',
@@ -452,10 +453,10 @@ export default function ReportsHub({
                       #{s.invoice_number}
                     </td>
                     <td className="px-4 py-2 text-slate-600 dark:text-slate-400">
-                      {new Date(s.created_at).toLocaleString('es-VE', {
+                      {normalizeSpaces(new Date(s.created_at).toLocaleString('es-VE', {
                         day: '2-digit', month: 'short',
                         hour: '2-digit', minute: '2-digit',
-                      })}
+                      }))}
                     </td>
                     <td className="px-4 py-2 text-slate-600 dark:text-slate-400">
                       {s.profiles?.full_name || '—'}

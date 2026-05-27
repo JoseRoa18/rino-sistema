@@ -135,3 +135,42 @@ export function formatRange({ from, to }) {
 export function dayOfWeekName(dow) {
   return ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'][dow] || '';
 }
+
+/**
+ * Normaliza espacios especiales en strings producidos por `toLocaleString`.
+ *
+ * Intl.DateTimeFormat inserta U+202F (narrow no-break space) o U+00A0 (nbsp)
+ * entre la hora y "a. m./p. m." en navegadores modernos. Node.js puede
+ * insertar uno distinto según la versión de ICU. Esto provoca errores de
+ * hidratación porque server y client renderizan strings "visualmente
+ * iguales" pero con codepoints distintos.
+ *
+ * Aplicar este helper sobre el resultado de toLocaleString garantiza que
+ * server y client coincidan exactamente.
+ */
+export function normalizeSpaces(s) {
+  if (typeof s !== 'string') return s;
+  return s.replace(/[   ]/g, ' ');
+}
+
+/**
+ * Formato corto de fecha + hora ('27/05/26, 11:45 a. m.') con espacios
+ * normalizados para evitar mismatch de hidratación.
+ */
+export function formatShortDateTime(input) {
+  if (!input) return '';
+  return normalizeSpaces(
+    new Date(input).toLocaleString('es-VE', { dateStyle: 'short', timeStyle: 'short' })
+  );
+}
+
+/**
+ * Formato largo de fecha + hora ('27 de mayo de 2026, 11:45 a. m.') con
+ * espacios normalizados.
+ */
+export function formatLongDateTime(input) {
+  if (!input) return '';
+  return normalizeSpaces(
+    new Date(input).toLocaleString('es-VE', { dateStyle: 'long', timeStyle: 'short' })
+  );
+}

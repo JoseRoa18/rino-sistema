@@ -7,6 +7,7 @@ import {
   Printer, Calendar, Users, DollarSign, Coins, Wallet, Lock, CheckCircle2,
 } from 'lucide-react';
 import { formatMoney, convertFromUsd } from '@/lib/pricing';
+import { normalizeSpaces } from '@/lib/dates';
 import KPICard from './KPICard';
 import PageHeader from './PageHeader';
 import EmptyState from './EmptyState';
@@ -149,9 +150,9 @@ export default function CajaClient({
             {dailyClose.profiles?.full_name && (
               <> por <strong>{dailyClose.profiles.full_name}</strong></>
             )}
-            <> el {new Date(dailyClose.closed_at).toLocaleString('es-VE', {
+            <> el {normalizeSpaces(new Date(dailyClose.closed_at).toLocaleString('es-VE', {
               day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
-            })}.</>
+            }))}.</>
           </span>
           <span className="text-xs text-emerald-700/70 dark:text-emerald-400/70">
             Las ventas posteriores siguen registrándose normalmente pero quedan fuera de este snapshot.

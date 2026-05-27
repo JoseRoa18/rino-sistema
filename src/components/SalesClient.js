@@ -12,6 +12,7 @@ import {
   ResponsiveContainer, PieChart, Pie, Cell,
 } from 'recharts';
 import { formatMoney } from '@/lib/pricing';
+import { formatShortDateTime } from '@/lib/dates';
 import KPICard from './KPICard';
 import SaleDetailModal from './SaleDetailModal';
 import PageHeader from './PageHeader';
@@ -179,7 +180,7 @@ export default function SalesClient({ initialSales, role }) {
                       #{String(s.invoice_number).padStart(6, '0')}
                     </td>
                     <td className="whitespace-nowrap px-4 py-3.5 text-sm text-slate-600 dark:text-slate-400">
-                      {new Date(s.created_at).toLocaleString('es-VE', { dateStyle: 'short', timeStyle: 'short' })}
+                      {formatShortDateTime(s.created_at)}
                     </td>
                     <td className="whitespace-nowrap px-4 py-3.5 text-sm text-slate-700 dark:text-slate-300">
                       {s.profiles?.full_name || '—'}
