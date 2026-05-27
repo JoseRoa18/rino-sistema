@@ -75,6 +75,15 @@ export default function POSInterface({
   const [paidCurrency, setPaidCurrency] = useState('USD');
   const [paidAmount, setPaidAmount] = useState('');
 
+  // Punto/Pago móvil: la moneda es SIEMPRE Bs. Forzamos paidCurrency a 'VES'
+  // cuando se selecciona uno de esos métodos.
+  useEffect(() => {
+    if (isExactMethod(paymentMethod) && paidCurrency !== 'VES') {
+      setPaidCurrency('VES');
+      setPaidAmount('');
+    }
+  }, [paymentMethod, paidCurrency]);
+
   const [parkedSales, setParkedSales] = useState([]);
 
   const [showCustomerPicker, setShowCustomerPicker] = useState(false);
@@ -825,6 +834,7 @@ export default function POSInterface({
           submitting={submitting}
           cartCount={cart.length}
           totalUsd={computed.totalUsd}
+          totalInPayCurrency={totalInPayCurrency}
           onCheckout={handleCheckout}
           familyMode={isFamilyMode}
           canFamily={canFamily}
@@ -1412,7 +1422,7 @@ function PagoPanel({
   onSetExactAmount, quickAmounts, onAddQuickAmount,
   changeBreakdown, changeOptions, selectedChangeKey, onSelectChangeKey,
   isSuspicious,
-  error, submitting, cartCount, totalUsd, onCheckout,
+  error, submitting, cartCount, totalUsd, totalInPayCurrency, onCheckout,
   familyMode, canFamily,
 }) {
   // ===== Modo familia: solo total + botón "Registrar consumo" =====
@@ -1584,13 +1594,17 @@ function PagoPanel({
         <div className="rounded-lg border-2 border-emerald-300 bg-emerald-50 p-3 dark:border-emerald-500/40 dark:bg-emerald-500/10">
           <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-400">
             <CheckCircle2 className="h-3.5 w-3.5" />
-            Pago exacto
+            Pago exacto en Bs.
           </div>
-          <p className="mt-1 font-mono text-2xl font-bold text-emerald-700 dark:text-emerald-400">
-            {formatMoney(totalUsd)}
+          <p className="mt-1 font-mono text-3xl font-bold text-emerald-700 dark:text-emerald-400">
+            {Number(totalInPayCurrency).toLocaleString('es-VE', { maximumFractionDigits: 2 })}
+            <span className="ml-1.5 text-lg">Bs.</span>
           </p>
-          <p className="mt-1 text-[11px] text-slate-600 dark:text-slate-400">
-            Se cobra el total exacto desde el dispositivo. Sin vuelto.
+          <p className="mt-0.5 font-mono text-[11px] text-slate-500 dark:text-slate-400">
+            ≈ {formatMoney(totalUsd)}
+          </p>
+          <p className="mt-1.5 text-[11px] text-slate-600 dark:text-slate-400">
+            Se cobra el total exacto en bolívares desde el dispositivo. Sin vuelto.
           </p>
         </div>
       )}
