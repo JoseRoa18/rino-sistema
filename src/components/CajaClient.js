@@ -4,12 +4,13 @@ import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Banknote, Smartphone, ArrowLeftRight, CreditCard, Clock, Receipt,
-  Printer, Calendar, Users, DollarSign, Coins, Wallet,
+  Printer, Calendar, Users, DollarSign, Coins, Wallet, Lock, CheckCircle2,
 } from 'lucide-react';
 import { formatMoney, convertFromUsd } from '@/lib/pricing';
 import KPICard from './KPICard';
 import PageHeader from './PageHeader';
 import EmptyState from './EmptyState';
+import DayCloseDialog from './DayCloseDialog';
 
 const PAYMENT_METHODS = [
   { value: 'efectivo',      label: 'Efectivo',      icon: Banknote,      color: 'emerald' },
@@ -35,11 +36,18 @@ const BAR_COLORS = {
   rose:    'bg-rose-500 dark:bg-rose-400',
 };
 
-export default function CajaClient({ initialSales, role, cashiers, date, todayStr, rate }) {
+export default function CajaClient({
+  initialSales, role, cashiers, date, todayStr, rate,
+  dailyClose: initialDailyClose,
+}) {
   const router = useRouter();
   const [cashierFilter, setCashierFilter] = useState('all');
+  const [closeDialogOpen, setCloseDialogOpen] = useState(false);
+  const [dailyClose, setDailyClose] = useState(initialDailyClose || null);
 
   const isCajero = role === 'cajero';
+  const canCloseDay = role === 'admin' || role === 'supervisor';
+  const isClosed = !!dailyClose;
 
   function changeDate(newDate) {
     router.push(`/caja?date=${newDate}`);
@@ -103,13 +111,53 @@ export default function CajaClient({ initialSales, role, cashiers, date, todaySt
           title="Cierre de caja"
           subtitle="Resumen de ventas del día por método de pago"
           actions={
-            <button onClick={handlePrint} className="btn-secondary">
-              <Printer className="h-4 w-4" />
-              Imprimir
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              <button onClick={handlePrint} className="btn-secondary">
+                <Printer className="h-4 w-4" />
+                Imprimir
+              </button>
+              {canCloseDay && (
+                isClosed ? (
+                  <button
+                    onClick={() => setCloseDialogOpen(true)}
+                    className="inline-flex items-center justify-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-700 shadow-sm hover:bg-emerald-100 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-400 dark:hover:bg-emerald-500/20"
+                  >
+                    <CheckCircle2 className="h-4 w-4" />
+                    Día cerrado · ver cierre
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => setCloseDialogOpen(true)}
+                    className="btn-primary"
+                  >
+                    <Lock className="h-4 w-4" />
+                    Cerrar día
+                  </button>
+                )
+              )}
+            </div>
           }
         />
       </div>
+
+      {/* Badge de estado del día */}
+      {canCloseDay && isClosed && (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm dark:border-emerald-500/30 dark:bg-emerald-500/10 print:hidden">
+          <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+          <span className="text-emerald-900 dark:text-emerald-200">
+            <strong>Día cerrado</strong>
+            {dailyClose.profiles?.full_name && (
+              <> por <strong>{dailyClose.profiles.full_name}</strong></>
+            )}
+            <> el {new Date(dailyClose.closed_at).toLocaleString('es-VE', {
+              day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
+            })}.</>
+          </span>
+          <span className="text-xs text-emerald-700/70 dark:text-emerald-400/70">
+            Las ventas posteriores siguen registrándose normalmente pero quedan fuera de este snapshot.
+          </span>
+        </div>
+      )}
 
       {/* Filtros */}
       <div className="card p-3 print:hidden">
@@ -338,6 +386,20 @@ export default function CajaClient({ initialSales, role, cashiers, date, todaySt
             </table>
           </div>
         </div>
+      )}
+
+      {closeDialogOpen && canCloseDay && (
+        <DayCloseDialog
+          date={date}
+          existingClose={dailyClose}
+          onClose={() => setCloseDialogOpen(false)}
+          onClosed={(result) => {
+            setCloseDialogOpen(false);
+            // El refresh trae el dailyClose fresco desde el server,
+            // pero también actualizamos local para feedback inmediato.
+            router.refresh();
+          }}
+        />
       )}
     </div>
   );

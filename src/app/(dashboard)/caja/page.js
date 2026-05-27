@@ -60,6 +60,17 @@ export default async function CajaPage({ searchParams }) {
     cashiers = data || [];
   }
 
+  // Cierre del día (si existe) — solo admin/supervisor lo consultan
+  let dailyClose = null;
+  if (role !== 'cajero') {
+    const { data } = await supabase
+      .from('daily_closes')
+      .select('*, profiles:closed_by ( full_name )')
+      .eq('close_date', date)
+      .maybeSingle();
+    dailyClose = data || null;
+  }
+
   return (
     <CajaClient
       initialSales={sales || []}
@@ -68,6 +79,7 @@ export default async function CajaPage({ searchParams }) {
       date={date}
       todayStr={todayStr}
       rate={rate || {}}
+      dailyClose={dailyClose}
     />
   );
 }
