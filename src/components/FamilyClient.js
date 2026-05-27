@@ -92,7 +92,7 @@ export default function FamilyClient({
       />
 
       {/* Banner explicativo */}
-      <div className="flex items-start gap-3 rounded-lg border border-violet-200 bg-violet-50 p-4 text-sm text-violet-900 dark:border-violet-500/30 dark:bg-violet-500/10 dark:text-violet-200">
+      <div className="flex items-start gap-3 rounded-lg border border-sky-200 bg-sky-50 p-4 text-sm text-sky-900 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-200">
         <Home className="mt-0.5 h-4 w-4 flex-shrink-0" />
         <div>
           <strong>¿Cómo funciona?</strong> Cada consumo descuenta del stock real
@@ -136,7 +136,7 @@ export default function FamilyClient({
           value={formatMoney(kpis.cost_month_usd)}
           hint={`${kpis.consumption_count_month || 0} registros`}
           icon={DollarSign}
-          accent="violet"
+          accent="sky"
         />
         <KPICard
           label="Consumo del año"
@@ -170,7 +170,7 @@ export default function FamilyClient({
         {/* Chart */}
         <div className="card p-4 lg:col-span-2">
           <div className="mb-3 flex items-center gap-2">
-            <BarChart3 className="h-4 w-4 text-violet-500" />
+            <BarChart3 className="h-4 w-4 text-sky-500" />
             <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
               Consumo diario (últimos 30 días)
             </h3>
@@ -208,7 +208,7 @@ export default function FamilyClient({
             <ol className="divide-y divide-slate-100 dark:divide-slate-800">
               {topProducts.slice(0, 8).map((p, i) => (
                 <li key={p.product_id} className="flex items-center gap-3 px-4 py-2.5">
-                  <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded bg-violet-100 text-xs font-semibold text-violet-700 dark:bg-violet-500/15 dark:text-violet-400">
+                  <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded bg-sky-100 text-xs font-semibold text-sky-700 dark:bg-sky-500/15 dark:text-sky-400">
                     {i + 1}
                   </span>
                   <div className="min-w-0 flex-1">

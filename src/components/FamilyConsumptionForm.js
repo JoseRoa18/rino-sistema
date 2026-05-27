@@ -107,7 +107,7 @@ export default function FamilyConsumptionForm({ products, onClose, onSave }) {
       <div className="card flex max-h-[95vh] w-full max-w-3xl flex-col">
         <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4 dark:border-slate-700">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-400">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-400">
               <Home className="h-5 w-5" />
             </div>
             <div>

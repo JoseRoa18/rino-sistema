@@ -690,8 +690,8 @@ export default function POSInterface({
     <>
       {/* BANNER MODO FAMILIA — fuera del grid para no romper layout */}
       {isFamilyMode && (
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border-2 border-violet-300 bg-violet-50 px-4 py-2.5 text-sm shadow-sm dark:border-violet-500/40 dark:bg-violet-500/10">
-          <div className="flex items-center gap-2 text-violet-800 dark:text-violet-300">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border-2 border-sky-300 bg-sky-50 px-4 py-2.5 text-sm shadow-sm dark:border-sky-500/40 dark:bg-sky-500/10">
+          <div className="flex items-center gap-2 text-sky-800 dark:text-sky-300">
             <Lock className="h-4 w-4" />
             <span>
               <strong>Modo consumo familiar</strong> — los productos se cobrarán
@@ -705,7 +705,7 @@ export default function POSInterface({
           </div>
           <button
             onClick={() => { setCustomerId(''); setError(''); }}
-            className="text-xs font-medium text-violet-700 underline hover:text-violet-900 dark:text-violet-400 dark:hover:text-violet-200"
+            className="text-xs font-medium text-sky-700 underline hover:text-sky-900 dark:text-sky-400 dark:hover:text-sky-200"
           >
             Salir del modo familia
           </button>
@@ -997,17 +997,26 @@ function ProductCard({ product: p, rank, catName, rates, onAdd, familyMode }) {
   const stockUnit = (p.unit && p.unit[0]) || 'u';
   const fractional = isFractionalUnit(p.unit);
 
-  // Precio en COP: usar el guardado o calcular vía USD
-  const priceCop = Number(p.price_cop) || (Number(p.price_usd) * (Number(rates?.usd_cop) || 0));
-
-  // Precio en Bs:
-  //   - Si hay tasa personalizada Rino → Math.ceil(COP / rino_cop_ves)
-  //   - Si no                          → USD × paralelo (regla del negocio)
   const rinoRate = Number(rates?.rino_cop_ves);
   const paraleloRate = Number(rates?.usd_ves_paralelo) || 0;
-  const priceVes = rinoRate > 0
-    ? copToVes(priceCop, rinoRate)
-    : Number(p.price_usd) * paraleloRate;
+  const usdCop = Number(rates?.usd_cop) || 0;
+
+  // En modo familia, los precios en COP y Bs. se calculan a partir del
+  // cost_avg (USD) en lugar de los precios de venta guardados. Esto refleja
+  // el costo real al que se le carga al consumo interno.
+  let priceCop, priceVes;
+  if (familyMode) {
+    const costUsd = Number(p.cost_avg) || 0;
+    priceCop = costUsd * usdCop;
+    priceVes = rinoRate > 0 && priceCop > 0
+      ? copToVes(priceCop, rinoRate)
+      : costUsd * paraleloRate;
+  } else {
+    priceCop = Number(p.price_cop) || (Number(p.price_usd) * usdCop);
+    priceVes = rinoRate > 0
+      ? copToVes(priceCop, rinoRate)
+      : Number(p.price_usd) * paraleloRate;
+  }
   return (
     <button
       onClick={onAdd}
@@ -1044,7 +1053,7 @@ function ProductCard({ product: p, rank, catName, rates, onAdd, familyMode }) {
       <div className="mt-auto space-y-0.5 pt-2">
         <div className={`flex items-baseline gap-1.5 ${
           familyMode
-            ? 'text-violet-700 dark:text-violet-400'
+            ? 'text-sky-700 dark:text-sky-400'
             : 'text-emerald-700 dark:text-emerald-400'
         }`}>
           <span className="text-lg font-bold leading-tight">
@@ -1058,7 +1067,7 @@ function ProductCard({ product: p, rank, catName, rates, onAdd, familyMode }) {
             </span>
           )}
           {familyMode && (
-            <span className="text-[10px] font-normal uppercase tracking-wider text-violet-500">
+            <span className="text-[10px] font-normal uppercase tracking-wider text-sky-500">
               costo
             </span>
           )}
@@ -1459,21 +1468,21 @@ function PagoPanel({
   // ===== Modo familia: solo total + botón "Registrar consumo" =====
   if (familyMode) {
     return (
-      <div className="flex min-h-0 flex-col justify-between gap-3 rounded-xl border-2 border-violet-300 bg-violet-50/50 p-4 shadow-sm dark:border-violet-500/40 dark:bg-violet-500/5">
+      <div className="flex min-h-0 flex-col justify-between gap-3 rounded-xl border-2 border-sky-300 bg-sky-50/50 p-4 shadow-sm dark:border-sky-500/40 dark:bg-sky-500/5">
         <div>
-          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-violet-700 dark:text-violet-400">
+          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-sky-700 dark:text-sky-400">
             <Lock className="h-3.5 w-3.5" />
             Consumo familiar
           </div>
-          <p className="mt-1 text-xs text-violet-600/80 dark:text-violet-400/80">
+          <p className="mt-1 text-xs text-sky-600/80 dark:text-sky-400/80">
             Sin cobro · descuento de stock al precio costo
           </p>
 
-          <div className="mt-4 rounded-lg border border-violet-200 bg-white p-3 dark:border-violet-500/30 dark:bg-slate-900">
+          <div className="mt-4 rounded-lg border border-sky-200 bg-white p-3 dark:border-sky-500/30 dark:bg-slate-900">
             <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
               Costo total
             </p>
-            <p className="mt-1 font-mono text-3xl font-bold text-violet-700 dark:text-violet-400">
+            <p className="mt-1 font-mono text-3xl font-bold text-sky-700 dark:text-sky-400">
               {formatMoney(totalUsd)}
             </p>
             <p className="mt-1 text-[10px] text-slate-500 dark:text-slate-400">
@@ -1499,7 +1508,7 @@ function PagoPanel({
         <button
           onClick={onCheckout}
           disabled={cartCount === 0 || submitting || !canFamily}
-          className="flex w-full items-center justify-center gap-2 rounded-lg bg-violet-600 px-4 py-3.5 text-base font-bold text-white shadow-sm transition hover:bg-violet-700 active:scale-[0.99] disabled:cursor-not-allowed disabled:bg-slate-300 dark:bg-violet-600 dark:hover:bg-violet-500 dark:disabled:bg-slate-700 dark:disabled:text-slate-500"
+          className="flex w-full items-center justify-center gap-2 rounded-lg bg-sky-600 px-4 py-3.5 text-base font-bold text-white shadow-sm transition hover:bg-sky-700 active:scale-[0.99] disabled:cursor-not-allowed disabled:bg-slate-300 dark:bg-sky-600 dark:hover:bg-sky-500 dark:disabled:bg-slate-700 dark:disabled:text-slate-500"
         >
           <CheckCircle2 className="h-5 w-5" />
           {submitting ? 'Registrando...' : 'Registrar consumo'}
@@ -2014,7 +2023,7 @@ function SuccessModal({ success, onClose }) {
       <div className="card w-full max-w-md p-6 text-center">
         <div className={`mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full ${
           family
-            ? 'bg-violet-100 text-violet-600 dark:bg-violet-500/15 dark:text-violet-400'
+            ? 'bg-sky-100 text-sky-600 dark:bg-sky-500/15 dark:text-sky-400'
             : 'bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400'
         }`}>
           <CheckCircle2 className="h-8 w-8" />

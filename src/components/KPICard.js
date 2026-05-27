@@ -22,6 +22,10 @@ const ACCENTS = {
     stripe: 'bg-violet-500',
     chip:   'bg-violet-50 text-violet-700 dark:bg-violet-500/10 dark:text-violet-400',
   },
+  sky: {
+    stripe: 'bg-sky-500',
+    chip:   'bg-sky-50 text-sky-700 dark:bg-sky-500/10 dark:text-sky-400',
+  },
   slate: {
     stripe: 'bg-slate-400',
     chip:   'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
