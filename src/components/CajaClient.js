@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Banknote, Smartphone, ArrowLeftRight, CreditCard, Clock, Receipt,
-  Printer, Calendar, Users, DollarSign, Coins, Wallet, Lock, CheckCircle2,
+  Printer, Calendar, Users, DollarSign, Wallet, Lock, CheckCircle2,
 } from 'lucide-react';
 import { formatMoney, convertFromUsd } from '@/lib/pricing';
 import { normalizeSpaces } from '@/lib/dates';
@@ -90,9 +90,26 @@ export default function CajaClient({
   }, [filteredSales, isCajero]);
 
   const totalUsd = filteredSales.reduce((acc, s) => acc + Number(s.total_usd || 0), 0);
+  // Equivalentes USD→Bs./COP usados solo en el footer de la tabla por método
   const totalVes = convertFromUsd(totalUsd, 'VES', rate);
   const totalCop = convertFromUsd(totalUsd, 'COP', rate);
-  const totalEfectivoUsd = byMethod.efectivo?.totalUsd || 0;
+
+  // Recibido por moneda (paid_currency × paid_amount):
+  //   - USD: aquí siempre es efectivo (no hay Zelle/transferencia USD operativa)
+  //   - VES: aquí siempre es pago móvil / transferencia (nunca efectivo Bs.)
+  //   - COP: aquí siempre es efectivo en pesos
+  // El crédito no entra (no hay cobro inmediato).
+  const receivedByCurrency = useMemo(() => {
+    const r = { USD: 0, VES: 0, COP: 0 };
+    for (const s of filteredSales) {
+      if (s.payment_method === 'credito') continue;
+      const cur = s.paid_currency;
+      if (cur && r[cur] !== undefined) {
+        r[cur] += Number(s.paid_amount) || 0;
+      }
+    }
+    return r;
+  }, [filteredSales]);
 
   const dateLabel = new Date(`${date}T12:00:00-04:00`).toLocaleDateString('es-VE', {
     weekday: 'long',
@@ -212,24 +229,24 @@ export default function CajaClient({
           accent="brand"
         />
         <KPICard
-          label="En efectivo"
-          value={formatMoney(totalEfectivoUsd)}
-          hint="Lo que debe haber en caja física"
+          label="Efectivo USD"
+          value={formatMoney(receivedByCurrency.USD)}
+          hint="Dólares en caja"
           icon={Wallet}
           accent="emerald"
         />
         <KPICard
-          label="Total en Bs."
-          value={totalVes.toLocaleString('es-VE', { maximumFractionDigits: 2 })}
-          hint="Convertido a tasa paralelo"
-          icon={Coins}
-          accent="violet"
+          label="En Bs."
+          value={`Bs. ${receivedByCurrency.VES.toLocaleString('es-VE', { maximumFractionDigits: 2 })}`}
+          hint="Pago móvil / transferencia"
+          icon={Smartphone}
+          accent="sky"
         />
         <KPICard
-          label="Total en COP"
-          value={totalCop.toLocaleString('es-CO', { maximumFractionDigits: 0 })}
-          hint="Convertido a tasa USD/COP"
-          icon={Coins}
+          label="Efectivo COP"
+          value={`$ ${receivedByCurrency.COP.toLocaleString('es-CO', { maximumFractionDigits: 0 })}`}
+          hint="Pesos en caja"
+          icon={Banknote}
           accent="amber"
         />
       </div>
