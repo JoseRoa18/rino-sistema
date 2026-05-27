@@ -31,7 +31,7 @@ const SECONDARY_ITEMS = [
   { href: '/proveedores',label: 'Proveedores',  icon: Truck,           roles: ['admin', 'supervisor'] },
   { href: '/familia',    label: 'Familia',      icon: Home,            roles: ['admin', 'supervisor'] },
   { href: '/reportes',   label: 'Reportes',     icon: FileText,        roles: ['admin', 'supervisor'] },
-  { href: '/usuarios',   label: 'Usuarios',     icon: UserCog,         roles: ['admin'] },
+  { href: '/usuarios',   label: 'Usuarios',     icon: UserCog,         roles: ['admin', 'supervisor'] },
 ];
 
 const ROLE_LABELS = {
