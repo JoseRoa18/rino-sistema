@@ -146,9 +146,10 @@ export default async function DashboardPage() {
           <KPICard
             label="Stock bajo mínimo"
             value={kpis?.low_stock_count || 0}
-            hint="productos a reordenar"
+            hint={(kpis?.low_stock_count || 0) > 0 ? 'Ver productos a reordenar' : 'productos a reordenar'}
             icon={AlertTriangle}
             accent={(kpis?.low_stock_count || 0) > 0 ? 'amber' : 'emerald'}
+            href={(kpis?.low_stock_count || 0) > 0 ? '/inventario?status=bajo_minimo' : undefined}
           />
           <KPICard
             label="Cuentas por cobrar"

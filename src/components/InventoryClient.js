@@ -28,12 +28,12 @@ const ABC_META = {
        hint: 'Cola del 5%' },
 };
 
-export default function InventoryClient({ initialItems, categories, suppliers, role }) {
+export default function InventoryClient({ initialItems, categories, suppliers, role, initialStatusFilter = 'all' }) {
   const router = useRouter();
   const [items, setItems] = useState(initialItems);
   const [search, setSearch] = useState('');
   const [categoryId, setCategoryId] = useState('all');
-  const [statusFilter, setStatusFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState(initialStatusFilter);
   const [adjustTarget, setAdjustTarget] = useState(null);
 
   const isAdmin = role === 'admin';

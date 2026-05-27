@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
 
 const ACCENTS = {
@@ -50,22 +51,28 @@ export default function KPICard({
   trend,
   trendLabel,
   onClick,
+  href,
   right,
 }) {
   const a = ACCENTS[accent] || ACCENTS.brand;
-  const clickable = typeof onClick === 'function';
+  const hasHref = typeof href === 'string' && href.length > 0;
+  const clickable = typeof onClick === 'function' || hasHref;
 
-  const Wrapper = clickable ? 'button' : 'div';
-  const wrapperProps = clickable
-    ? {
-        type: 'button',
-        onClick,
-        className:
-          'group card relative w-full overflow-hidden p-5 pl-6 text-left transition hover:border-slate-300 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 dark:hover:border-slate-600',
-      }
-    : {
-        className: 'card relative overflow-hidden p-5 pl-6',
-      };
+  const baseCls =
+    'group card relative w-full overflow-hidden p-5 pl-6 text-left transition hover:border-slate-300 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 dark:hover:border-slate-600';
+
+  let Wrapper;
+  let wrapperProps;
+  if (hasHref) {
+    Wrapper = Link;
+    wrapperProps = { href, className: baseCls };
+  } else if (typeof onClick === 'function') {
+    Wrapper = 'button';
+    wrapperProps = { type: 'button', onClick, className: baseCls };
+  } else {
+    Wrapper = 'div';
+    wrapperProps = { className: 'card relative overflow-hidden p-5 pl-6' };
+  }
 
   // Trend visual
   let trendNode = null;

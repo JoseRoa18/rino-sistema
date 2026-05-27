@@ -3,7 +3,19 @@
 import { useState, useMemo } from 'react';
 import { X, Calculator, TrendingUp, Lock, AlertTriangle } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
-import { priceWithMargin } from '@/lib/pricing';
+import { priceWithMargin, copToVes } from '@/lib/pricing';
+
+const UNIT_OPTIONS = [
+  { value: 'unidad', label: 'Unidad', fractional: false },
+  { value: 'kg',     label: 'Kilogramo (kg)', fractional: true },
+  { value: 'g',      label: 'Gramo (g)', fractional: true },
+  { value: 'litro',  label: 'Litro (L)', fractional: true },
+  { value: 'ml',     label: 'Mililitro (ml)', fractional: true },
+  { value: 'paquete', label: 'Paquete', fractional: false },
+  { value: 'caja',   label: 'Caja', fractional: false },
+  { value: 'bulto',  label: 'Bulto', fractional: false },
+  { value: 'docena', label: 'Docena', fractional: false },
+];
 
 /**
  * Input de precio con badge "Ingresado" / "Calculado".
@@ -62,10 +74,50 @@ export default function ProductForm({ product, categories, rates, onClose, onSav
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [sourceCurrency, setSourceCurrency] = useState('USD');
+  const [costSourceCurrency, setCostSourceCurrency] = useState('USD');
 
   const rateVes = Number(rates?.usd_ves_paralelo) || 0;
   const rateCop = Number(rates?.usd_cop) || 0;
+  const rinoCopVes = Number(rates?.rino_cop_ves) || 0;
   const hasRates = rateVes > 0 && rateCop > 0;
+
+  // Drafts: lo que el usuario tecleó en cada moneda. Solo se muestra al
+  // usuario el draft de la moneda fuente; las otras dos se calculan en vivo
+  // a partir del draft fuente (NO se hace round-trip por USD para evitar
+  // pérdida de precisión).
+  const [costDraftUsd, setCostDraftUsd] = useState(String(product?.cost_avg ?? 0));
+  const [costDraftCop, setCostDraftCop] = useState('');
+  const [costDraftVes, setCostDraftVes] = useState('');
+
+  // Conversión en vivo del costo basada en la moneda fuente activa.
+  const displayedCosts = useMemo(() => {
+    let usd = 0;
+    let cop = 0;
+    let ves = 0;
+    if (costSourceCurrency === 'COP') {
+      cop = Number(costDraftCop) || 0;
+      usd = rateCop > 0 ? cop / rateCop : 0;
+      ves = rinoCopVes > 0
+        ? copToVes(cop, rinoCopVes)
+        : (rateVes > 0 ? usd * rateVes : 0);
+    } else if (costSourceCurrency === 'VES') {
+      ves = Number(costDraftVes) || 0;
+      if (rinoCopVes > 0 && rateCop > 0) {
+        cop = ves * rinoCopVes;
+        usd = cop / rateCop;
+      } else if (rateVes > 0) {
+        usd = ves / rateVes;
+        cop = usd * rateCop;
+      }
+    } else {
+      usd = Number(costDraftUsd) || 0;
+      cop = usd * rateCop;
+      ves = rinoCopVes > 0 && cop > 0
+        ? copToVes(cop, rinoCopVes)
+        : (rateVes > 0 ? usd * rateVes : 0);
+    }
+    return { usd, cop, ves };
+  }, [costSourceCurrency, costDraftUsd, costDraftCop, costDraftVes, rateCop, rateVes, rinoCopVes]);
 
   const round2 = (n) => Math.round(n * 100) / 100;
   const round0 = (n) => Math.round(n);
@@ -117,14 +169,33 @@ export default function ProductForm({ product, categories, rates, onClose, onSav
     }));
   }
 
-  function updateCost(value) {
-    const cost = Number(value) || 0;
+  // Helper: dada una moneda fuente y su valor, calcula el USD equivalente.
+  function costToUsd(source, raw) {
+    const n = Number(raw) || 0;
+    if (source === 'USD') return n;
+    if (source === 'COP') return rateCop > 0 ? n / rateCop : 0;
+    if (source === 'VES') {
+      if (rinoCopVes > 0 && rateCop > 0) return (n * rinoCopVes) / rateCop;
+      if (rateVes > 0) return n / rateVes;
+    }
+    return 0;
+  }
+
+  // Una sola función que cubre las 3 fuentes: actualiza el draft de la moneda
+  // fuente, deja los otros drafts intactos (se mostrarán como Calculados
+  // derivados del draft fuente), y propaga el USD al cost_avg + precio sugerido.
+  function updateCostByCurrency(source, value) {
+    if (source === 'USD') setCostDraftUsd(value);
+    else if (source === 'COP') setCostDraftCop(value);
+    else if (source === 'VES') setCostDraftVes(value);
+    setCostSourceCurrency(source);
+    const usd = costToUsd(source, value);
     const margin = Number(form.target_margin) || 0;
-    const suggestedUsd = priceWithMargin(cost, margin);
+    const suggestedUsd = priceWithMargin(usd, margin);
     setSourceCurrency('USD');
     setForm((prev) => ({
       ...prev,
-      cost_avg: value,
+      cost_avg: usd,
       price_usd: suggestedUsd,
       price_ves: hasRates ? round2(suggestedUsd * rateVes) : prev.price_ves,
       price_cop: hasRates ? round0(suggestedUsd * rateCop) : prev.price_cop,
@@ -273,24 +344,49 @@ export default function ProductForm({ product, categories, rates, onClose, onSav
 
           <fieldset className="rounded-lg border border-slate-200 p-3 dark:border-slate-700">
             <legend className="px-2 text-xs font-medium text-slate-500 dark:text-slate-400">
-              Costos y margen
+              Costo del producto
+            </legend>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <PriceInput
+                label="USD"
+                currency="USD"
+                step="0.0001"
+                value={costSourceCurrency === 'USD' ? costDraftUsd : round2(displayedCosts.usd)}
+                onChange={(v) => updateCostByCurrency('USD', v)}
+                sourceCurrency={costSourceCurrency}
+                hasRates={hasRates}
+              />
+              <PriceInput
+                label="COP"
+                currency="COP"
+                step="1"
+                value={costSourceCurrency === 'COP' ? costDraftCop : (displayedCosts.cop ? round0(displayedCosts.cop) : '')}
+                onChange={(v) => updateCostByCurrency('COP', v)}
+                sourceCurrency={costSourceCurrency}
+                hasRates={hasRates}
+              />
+              <PriceInput
+                label="Bs."
+                currency="VES"
+                step="0.01"
+                value={costSourceCurrency === 'VES' ? costDraftVes : (displayedCosts.ves ? round0(displayedCosts.ves) : '')}
+                onChange={(v) => updateCostByCurrency('VES', v)}
+                sourceCurrency={costSourceCurrency}
+                hasRates={hasRates}
+              />
+            </div>
+            <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+              Edita la moneda que prefieras. Las otras dos se calculan con la tasa del día. El USD se actualiza también al registrar compras (promedio ponderado).
+            </p>
+          </fieldset>
+
+          <fieldset className="rounded-lg border border-slate-200 p-3 dark:border-slate-700">
+            <legend className="px-2 text-xs font-medium text-slate-500 dark:text-slate-400">
+              Margen objetivo
             </legend>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
-                <label className="label">Costo promedio (USD)</label>
-                <input
-                  type="number"
-                  step="0.0001"
-                  className="input"
-                  value={form.cost_avg}
-                  onChange={(e) => updateCost(e.target.value)}
-                />
-                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                  Se actualiza al registrar compras (promedio ponderado).
-                </p>
-              </div>
-              <div>
-                <label className="label">Margen objetivo (%)</label>
+                <label className="label">Porcentaje (%)</label>
                 <input
                   type="number"
                   step="0.01"
@@ -298,15 +394,21 @@ export default function ProductForm({ product, categories, rates, onClose, onSav
                   value={form.target_margin}
                   onChange={(e) => updateMargin(e.target.value)}
                 />
-                {realMargin !== null && (
+              </div>
+              <div className="flex flex-col justify-end">
+                {realMargin !== null ? (
                   <p
-                    className={`mt-1 text-xs ${
+                    className={`text-xs ${
                       Math.abs(realMargin - Number(form.target_margin)) < 0.5
                         ? 'text-emerald-600 dark:text-emerald-400'
                         : 'text-amber-600 dark:text-amber-400'
                     }`}
                   >
-                    Margen real con precio actual: {realMargin.toFixed(1)}%
+                    Margen real con precio actual: <strong>{realMargin.toFixed(1)}%</strong>
+                  </p>
+                ) : (
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Define el % de utilidad que quieres sobre el costo.
                   </p>
                 )}
               </div>
@@ -378,13 +480,19 @@ export default function ProductForm({ product, categories, rates, onClose, onSav
                 />
               </div>
               <div>
-                <label className="label">Unidad</label>
-                <input
+                <label className="label">Unidad de medida</label>
+                <select
                   className="input"
-                  value={form.unit}
+                  value={UNIT_OPTIONS.find((u) => u.value === form.unit) ? form.unit : 'unidad'}
                   onChange={(e) => update('unit', e.target.value)}
-                  placeholder="unidad, kg, litro..."
-                />
+                >
+                  {UNIT_OPTIONS.map((u) => (
+                    <option key={u.value} value={u.value}>{u.label}</option>
+                  ))}
+                </select>
+                <p className="mt-1 text-[10px] text-slate-500 dark:text-slate-400">
+                  Para kg/g/L/ml se permiten cantidades decimales en el POS.
+                </p>
               </div>
             </div>
           </fieldset>

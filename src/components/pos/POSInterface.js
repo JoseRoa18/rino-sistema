@@ -31,6 +31,22 @@ const SUSPICIOUS_PAYMENT_MULTIPLIER = 3;
 const PARKED_SALES_KEY = 'rino_pos_parked_sales';
 const DISCOUNT_PRESETS = [5, 10, 15, 20];
 
+// Métodos electrónicos: el monto siempre se cobra exacto, sin vuelto.
+const EXACT_PAYMENT_METHODS = new Set(['pago_movil', 'tarjeta']);
+const isExactMethod = (m) => EXACT_PAYMENT_METHODS.has(m);
+
+// Unidades que se miden por peso/volumen → permiten cantidades decimales.
+const FRACTIONAL_UNITS = new Set(['kg', 'g', 'litro', 'l', 'ml']);
+const isFractionalUnit = (u) => FRACTIONAL_UNITS.has(String(u || '').toLowerCase());
+const qtyStepFor = (u) => (isFractionalUnit(u) ? 0.1 : 1);
+const formatQty = (q, u) => {
+  const n = Number(q) || 0;
+  if (isFractionalUnit(u)) {
+    return n.toLocaleString('es-VE', { minimumFractionDigits: 0, maximumFractionDigits: 3 });
+  }
+  return String(n);
+};
+
 export default function POSInterface({
   initialProducts,
   initialBestSellers,
@@ -190,6 +206,8 @@ export default function POSInterface({
 
   const changeBreakdown = useMemo(() => {
     if (cart.length === 0) return null;
+    // Punto/Pago móvil: pago exacto siempre, nunca hay vuelto.
+    if (isExactMethod(paymentMethod)) return null;
     const paid = Number(paidAmount) || 0;
     if (paid === 0) return null;
 
@@ -231,7 +249,7 @@ export default function POSInterface({
     const remainderUsd = diffUsd - wholeUsd;
     const rawCop = remainderUsd * ratesCop;
     return { type: 'change', mode: 'split', usdPart: wholeUsd, copPart: Math.floor(rawCop / 100) * 100, rawUsd: diffUsd, rawCop };
-  }, [paidAmount, paidCurrency, computed, totalInPayCurrency, rates, cart.length]);
+  }, [paidAmount, paidCurrency, computed, totalInPayCurrency, rates, cart.length, paymentMethod]);
 
   // Alternativas de vuelto: para cuando el cajero no tenga la denominación recomendada.
   // Genera hasta 4-5 maneras distintas de devolver el mismo monto:
@@ -371,8 +389,19 @@ export default function POSInterface({
 
   function changeQty(productId, delta) {
     setCart((prev) =>
-      prev.map((it) => (it.product.id === productId ? { ...it, qty: it.qty + delta } : it))
-        .filter((it) => it.qty > 0)
+      prev.map((it) => {
+        if (it.product.id !== productId) return it;
+        const step = qtyStepFor(it.product.unit);
+        // Si el delta original es ±1 pero la unidad es fraccional, escalamos
+        // al step de la unidad (0.1) preservando el signo. Si vienen deltas
+        // distintos (p.ej. desde algún teclado), los respetamos tal cual.
+        const effective = Math.abs(delta) === 1 ? Math.sign(delta) * step : delta;
+        let next = Number(it.qty) + effective;
+        // Redondeo limpio para evitar 0.30000000000000004 etc.
+        next = Math.round(next * 1000) / 1000;
+        return { ...it, qty: next };
+      })
+      .filter((it) => it.qty > 0)
     );
   }
 
@@ -529,7 +558,7 @@ export default function POSInterface({
       return;
     }
 
-    if (isSuspicious && !confirmingSuspicious && paymentMethod !== 'credito') {
+    if (isSuspicious && !confirmingSuspicious && paymentMethod !== 'credito' && !isExactMethod(paymentMethod)) {
       setConfirmingSuspicious(true);
       setError('El monto recibido parece muy alto. Verifica y vuelve a presionar Cobrar si está correcto.');
       return;
@@ -537,9 +566,16 @@ export default function POSInterface({
 
     setSubmitting(true);
 
+    // Métodos electrónicos: pago siempre exacto, sin vuelto. Forzamos el
+    // monto pagado al total en la moneda seleccionada.
+    const exactMethod = isExactMethod(paymentMethod);
+    const effectivePaidAmount = exactMethod
+      ? totalInPayCurrency
+      : (Number(paidAmount) || 0);
+
     let usdPart = 0;
     let copPart = 0;
-    if (paymentMethod !== 'credito' && changeBreakdown?.type === 'change') {
+    if (paymentMethod !== 'credito' && !exactMethod && changeBreakdown?.type === 'change') {
       // Usamos lo que el cajero escogió en el picker (puede ser la opción
       // recomendada o cualquier alternativa). selectedChange siempre refleja
       // la opción activa.
@@ -563,7 +599,7 @@ export default function POSInterface({
       customer_id: customerId || null,
       payment_method: paymentMethod,
       paid_currency: paidCurrency,
-      paid_amount: Number(paidAmount) || 0,
+      paid_amount: effectivePaidAmount,
       change_amount_usd: usdPart,
       change_amount_cop: copPart,
       discount_pct: Number(discountPct) || 0,
@@ -587,14 +623,16 @@ export default function POSInterface({
     setSuccess({
       saleId: data,
       total: computed.totalUsd,
-      paidAmount: Number(paidAmount) || 0,
+      paidAmount: effectivePaidAmount,
       paidCurrency,
       // Pasamos un breakdown con los amounts SELECCIONADOS (no necesariamente
       // los recomendados) para que el modal de éxito muestre lo que el cajero
       // realmente le devolvió al cliente.
-      breakdown: changeBreakdown && changeBreakdown.type === 'change' && selectedChange
-        ? { ...changeBreakdown, usdPart: selectedChange.usdPart, copPart: selectedChange.copPart }
-        : changeBreakdown,
+      breakdown: exactMethod
+        ? { type: 'exact' }
+        : (changeBreakdown && changeBreakdown.type === 'change' && selectedChange
+            ? { ...changeBreakdown, usdPart: selectedChange.usdPart, copPart: selectedChange.copPart }
+            : changeBreakdown),
     });
     clearAll();
     setSubmitting(false);
@@ -918,6 +956,7 @@ function ProductCard({ product: p, rank, catName, rates, onAdd, familyMode }) {
   const lowStock = p.stock <= p.min_stock;
   const noStock = p.stock <= 0;
   const stockUnit = (p.unit && p.unit[0]) || 'u';
+  const fractional = isFractionalUnit(p.unit);
 
   // Precio en COP: usar el guardado o calcular vía USD
   const priceCop = Number(p.price_cop) || (Number(p.price_usd) * (Number(rates?.usd_cop) || 0));
@@ -972,6 +1011,11 @@ function ProductCard({ product: p, rank, catName, rates, onAdd, familyMode }) {
               ? formatMoney(p.cost_avg, 'USD')
               : formatMoney(p.price_usd, 'USD')}
           </span>
+          {fractional && (
+            <span className="text-[10px] font-normal uppercase tracking-wider text-slate-500 dark:text-slate-400">
+              /{p.unit}
+            </span>
+          )}
           {familyMode && (
             <span className="text-[10px] font-normal uppercase tracking-wider text-violet-500">
               costo
@@ -1143,9 +1187,10 @@ function CartPanel({
                       </button>
                       <input
                         type="number"
+                        step={qtyStepFor(it.product.unit)}
                         value={it.qty}
                         onChange={(e) => onSetQty(it.product.id, e.target.value)}
-                        className="h-7 w-12 rounded-md border border-slate-200 bg-white text-center text-xs font-semibold text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                        className={`h-7 ${isFractionalUnit(it.product.unit) ? 'w-16' : 'w-12'} rounded-md border border-slate-200 bg-white text-center text-xs font-semibold text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100`}
                         min="0"
                       />
                       <button onClick={() => onChangeQty(it.product.id, 1)}
@@ -1154,6 +1199,11 @@ function CartPanel({
                         <Plus className="h-3 w-3" />
                       </button>
                     </div>
+                    {isFractionalUnit(it.product.unit) && (
+                      <p className="mt-0.5 text-center text-[10px] text-slate-400 dark:text-slate-500">
+                        {it.product.unit}
+                      </p>
+                    )}
                   </td>
                   <td className="px-3 py-2.5 text-right text-slate-700 dark:text-slate-300">
                     {formatMoney(familyMode ? it.product.cost_avg : it.product.price_usd)}
@@ -1446,7 +1496,7 @@ function PagoPanel({
         </div>
       </div>
 
-      {paymentMethod !== 'credito' && (
+      {paymentMethod !== 'credito' && !isExactMethod(paymentMethod) && (
         <>
           <div>
             <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
@@ -1528,6 +1578,21 @@ function PagoPanel({
             </div>
           )}
         </>
+      )}
+
+      {isExactMethod(paymentMethod) && (
+        <div className="rounded-lg border-2 border-emerald-300 bg-emerald-50 p-3 dark:border-emerald-500/40 dark:bg-emerald-500/10">
+          <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-400">
+            <CheckCircle2 className="h-3.5 w-3.5" />
+            Pago exacto
+          </div>
+          <p className="mt-1 font-mono text-2xl font-bold text-emerald-700 dark:text-emerald-400">
+            {formatMoney(totalUsd)}
+          </p>
+          <p className="mt-1 text-[11px] text-slate-600 dark:text-slate-400">
+            Se cobra el total exacto desde el dispositivo. Sin vuelto.
+          </p>
+        </div>
       )}
 
       {error && (
