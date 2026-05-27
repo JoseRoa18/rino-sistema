@@ -28,9 +28,40 @@ const ABC_META = {
        hint: 'Cola del 5%' },
 };
 
+/**
+ * Deriva el status del producto. Prioridad:
+ *   1. sin_stock  (stock <= 0)
+ *   2. bajo_minimo (stock <= min_stock)  ← antes que sin_movimiento, para que
+ *      coincida con el KPI del dashboard (que cuenta stock<=min_stock sin
+ *      importar ventas recientes).
+ *   3. critico    (≤ 7 días al ritmo actual)
+ *   4. sin_movimiento (vel = 0 y stock > min_stock)
+ *   5. saludable
+ *
+ * NOTA: la vista SQL v_inventory_forecast prioriza sin_movimiento sobre
+ * bajo_minimo, lo cual ocultaba productos que el dashboard sí reportaba
+ * como bajo mínimo. Re-derivamos aquí para mantener consistencia.
+ */
+function deriveStatus({ stock, minStock, vel, days }) {
+  if (stock <= 0) return 'sin_stock';
+  if (stock <= minStock) return 'bajo_minimo';
+  if (days !== null && days <= 7) return 'critico';
+  if (vel === 0) return 'sin_movimiento';
+  return 'saludable';
+}
+
 export default function InventoryClient({ initialItems, categories, suppliers, role, initialStatusFilter = 'all' }) {
   const router = useRouter();
-  const [items, setItems] = useState(initialItems);
+  // Re-derivamos status en cliente para corregir la prioridad de la vista SQL.
+  const normalizeItems = (arr) => arr.map((it) => {
+    const stock = Number(it.stock) || 0;
+    const vel = Number(it.avg_daily_units) || 0;
+    const minStock = Number(it.min_stock) || 0;
+    const days = it.days_remaining ?? null;
+    return { ...it, status: deriveStatus({ stock, minStock, vel, days }) };
+  });
+
+  const [items, setItems] = useState(() => normalizeItems(initialItems));
   const [search, setSearch] = useState('');
   const [categoryId, setCategoryId] = useState('all');
   const [statusFilter, setStatusFilter] = useState(initialStatusFilter);
@@ -42,7 +73,8 @@ export default function InventoryClient({ initialItems, categories, suppliers, r
   // del servidor. Sin esto, el state local se queda congelado en initialItems
   // y los ajustes no se reflejan hasta un F5 manual.
   useEffect(() => {
-    setItems(initialItems);
+    setItems(normalizeItems(initialItems));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialItems]);
 
   // Update optimista: aplica el cambio de stock al item correspondiente
@@ -64,20 +96,12 @@ export default function InventoryClient({ initialItems, categories, suppliers, r
         if (stock <= 0) days = 0;
         else if (vel > 0) days = Math.round((stock / vel) * 10) / 10;
 
-        // Recalcular estado con la misma lógica de la vista SQL
-        let status;
-        if (stock <= 0) status = 'sin_stock';
-        else if (vel === 0) status = 'sin_movimiento';
-        else if (stock <= minStock) status = 'bajo_minimo';
-        else if (days !== null && days <= 7) status = 'critico';
-        else status = 'saludable';
-
         return {
           ...it,
           stock,
           inventory_value_usd: Math.round(stock * cost * 100) / 100,
           days_remaining: days,
-          status,
+          status: deriveStatus({ stock, minStock, vel, days }),
         };
       })
     );
