@@ -13,7 +13,11 @@ export default async function POSPage() {
   // Categorías y tasa vienen de cache (5-10 min) - casi instantáneo.
   // Productos y clientes son frescos cada vez (stock cambia).
   const [productsRes, bestSellersRes, categories, rate, customersRes] = await Promise.all([
-    supabase.from('products').select('*').eq('active', true).order('name'),
+    supabase
+      .from('products')
+      .select('*, variants:product_variants(id, name, base_quantity, price_usd, price_cop, price_ves, sort_order, active)')
+      .eq('active', true)
+      .order('name'),
     supabase.from('v_top_sold_products').select('*'),
     getCachedCategories(),
     getCachedLatestRate(),
@@ -24,6 +28,16 @@ export default async function POSPage() {
       .order('name'),
   ]);
 
+  // Filtrar solo variants activas y ordenar
+  const products = (productsRes.data || []).map((p) => ({
+    ...p,
+    variants: Array.isArray(p.variants)
+      ? p.variants
+          .filter((v) => v.active !== false)
+          .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
+      : [],
+  }));
+
   return (
     <div className="space-y-4">
       <div>
@@ -31,7 +45,7 @@ export default async function POSPage() {
         <p className="text-sm text-slate-500 dark:text-slate-400">Registra ventas rápidas y precisas</p>
       </div>
       <POSInterface
-        initialProducts={productsRes.data || []}
+        initialProducts={products}
         initialBestSellers={bestSellersRes.data || []}
         initialCategories={categories || []}
         initialRates={rate || {}}

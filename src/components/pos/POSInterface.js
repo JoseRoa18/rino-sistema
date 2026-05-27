@@ -163,6 +163,26 @@ export default function POSInterface({
     return [...ranked, ...filler];
   }, [products, bestSellers, trimmedSearch, activeCategory]);
 
+  // Aplana productos con variants: cada presentación se renderiza como su
+  // propia tarjeta en el grid. Productos sin variants quedan tal cual.
+  const displayItems = useMemo(() => {
+    const items = [];
+    for (const p of visibleProducts) {
+      const vs = Array.isArray(p.variants) ? p.variants : [];
+      if (vs.length === 0) {
+        items.push({ key: p.id, product: p, variant: null });
+      } else {
+        for (const v of vs) {
+          items.push({ key: `${p.id}|${v.id}`, product: p, variant: v });
+        }
+      }
+    }
+    return items;
+  }, [visibleProducts]);
+
+  // Identificador de una línea del carrito (product+variant)
+  const lineKeyOf = (item) => `${item.product.id}|${item.variant?.id || ''}`;
+
   const categoryCounts = useMemo(() => {
     const counts = { all: 0 };
     for (const p of products) {
@@ -187,20 +207,28 @@ export default function POSInterface({
     const rinoRate = Number(rates?.rino_cop_ves) || 0;
     const paraleloRate = Number(rates?.usd_ves_paralelo) || 0;
 
-    const subtotalUsd = isFamilyMode
-      ? cart.reduce((acc, it) => acc + Number(it.product.cost_avg || 0) * it.qty, 0)
-      : cart.reduce((acc, it) => acc + Number(it.product.price_usd || 0) * it.qty, 0);
+    // Helpers para extraer el precio efectivo de cada línea, respetando variant.
+    // En modo familia el "precio" es el costo equivalente (base_qty × cost_avg
+    // si hay variant; cost_avg si no).
+    const lineUsd = (it) => {
+      if (isFamilyMode) {
+        const costPerBase = Number(it.product.cost_avg || 0);
+        return it.variant ? costPerBase * Number(it.variant.base_quantity || 1) : costPerBase;
+      }
+      return it.variant ? Number(it.variant.price_usd || 0) : Number(it.product.price_usd || 0);
+    };
+    const lineCop = (it) => {
+      if (isFamilyMode) {
+        return lineUsd(it) * usdRate;
+      }
+      if (it.variant) {
+        return Number(it.variant.price_cop) || (Number(it.variant.price_usd) * usdRate);
+      }
+      return Number(it.product.price_cop) || (Number(it.product.price_usd) * usdRate);
+    };
 
-    // COP: sumamos el price_cop GUARDADO de cada producto (es el que ve el
-    // cliente en la tarjeta y el que se cobra). Solo cae a USD*tasa cuando
-    // un producto no tenga price_cop guardado.
-    const subtotalCop = isFamilyMode
-      ? subtotalUsd * usdRate
-      : cart.reduce((acc, it) => {
-          const cop = Number(it.product.price_cop)
-            || (Number(it.product.price_usd) * usdRate);
-          return acc + cop * it.qty;
-        }, 0);
+    const subtotalUsd = cart.reduce((acc, it) => acc + lineUsd(it) * it.qty, 0);
+    const subtotalCop = cart.reduce((acc, it) => acc + lineCop(it) * it.qty, 0);
 
     const discountPctNum = Number(discountPct) || 0;
     const taxPctNum = Number(taxPct) || 0;
@@ -411,31 +439,30 @@ export default function POSInterface({
     return true;
   }
 
-  function addToCart(product) {
+  function addToCart(product, variant = null) {
     if (product.stock <= 0) return;
+    const key = `${product.id}|${variant?.id || ''}`;
     setCart((prev) => {
-      const existing = prev.find((it) => it.product.id === product.id);
+      const existing = prev.find((it) => lineKeyOf(it) === key);
       if (existing) {
         return prev.map((it) =>
-          it.product.id === product.id ? { ...it, qty: it.qty + 1 } : it
+          lineKeyOf(it) === key ? { ...it, qty: it.qty + 1 } : it
         );
       }
-      return [...prev, { product, qty: 1 }];
+      return [...prev, { product, variant, qty: 1 }];
     });
     setError('');
   }
 
-  function changeQty(productId, delta) {
+  function changeQty(lineKey, delta) {
     setCart((prev) =>
       prev.map((it) => {
-        if (it.product.id !== productId) return it;
-        const step = qtyStepFor(it.product.unit);
-        // Si el delta original es ±1 pero la unidad es fraccional, escalamos
-        // al step de la unidad (0.1) preservando el signo. Si vienen deltas
-        // distintos (p.ej. desde algún teclado), los respetamos tal cual.
+        if (lineKeyOf(it) !== lineKey) return it;
+        // Las variants (cartón, caja...) son siempre enteras. Las unidades
+        // fraccionales (kg, L) solo aplican al producto base.
+        const step = it.variant ? 1 : qtyStepFor(it.product.unit);
         const effective = Math.abs(delta) === 1 ? Math.sign(delta) * step : delta;
         let next = Number(it.qty) + effective;
-        // Redondeo limpio para evitar 0.30000000000000004 etc.
         next = Math.round(next * 1000) / 1000;
         return { ...it, qty: next };
       })
@@ -443,19 +470,19 @@ export default function POSInterface({
     );
   }
 
-  function setQty(productId, qty) {
+  function setQty(lineKey, qty) {
     const n = Math.max(0, Number(qty) || 0);
     if (n === 0) {
-      setCart((prev) => prev.filter((it) => it.product.id !== productId));
+      setCart((prev) => prev.filter((it) => lineKeyOf(it) !== lineKey));
       return;
     }
     setCart((prev) =>
-      prev.map((it) => (it.product.id === productId ? { ...it, qty: n } : it))
+      prev.map((it) => (lineKeyOf(it) === lineKey ? { ...it, qty: n } : it))
     );
   }
 
-  function removeFromCart(productId) {
-    setCart((prev) => prev.filter((it) => it.product.id !== productId));
+  function removeFromCart(lineKey) {
+    setCart((prev) => prev.filter((it) => lineKeyOf(it) !== lineKey));
   }
 
   function clearAll() {
@@ -501,6 +528,9 @@ export default function POSInterface({
         categoryId: it.product.category_id,
         active: it.product.active,
         minStock: it.product.min_stock,
+        costAvg: it.product.cost_avg,
+        variants: it.product.variants,
+        variant: it.variant || null,
         qty: it.qty,
       })),
       customerId,
@@ -534,7 +564,10 @@ export default function POSInterface({
         min_stock: it.minStock,
         category_id: it.categoryId,
         active: it.active,
+        cost_avg: it.costAvg,
+        variants: it.variants,
       },
+      variant: it.variant || null,
       qty: it.qty,
     }));
     setCart(restoredCart);
@@ -563,9 +596,11 @@ export default function POSInterface({
       setSubmitting(true);
       const payloadFamily = {
         notes: note || null,
+        // En consumo familiar, el descuento es siempre en unidades base. Si hay
+        // variant, multiplicamos por base_quantity.
         items: cart.map((it) => ({
           product_id: it.product.id,
-          quantity:   it.qty,
+          quantity:   it.variant ? it.qty * Number(it.variant.base_quantity || 1) : it.qty,
         })),
       };
       const { data, error: famErr } = await supabase.rpc(
@@ -645,9 +680,14 @@ export default function POSInterface({
       notes: note || null,
       items: cart.map((it) => ({
         product_id: it.product.id,
-        product_name: it.product.name,
+        product_name: it.variant
+          ? `${it.product.name} (${it.variant.name})`
+          : it.product.name,
         quantity: it.qty,
-        unit_price_usd: Number(it.product.price_usd || 0),
+        unit_price_usd: it.variant
+          ? Number(it.variant.price_usd || 0)
+          : Number(it.product.price_usd || 0),
+        variant_id: it.variant?.id || null,
       })),
     };
 
@@ -777,7 +817,7 @@ export default function POSInterface({
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto pr-1">
-          {visibleProducts.length === 0 ? (
+          {displayItems.length === 0 ? (
             <div className="flex flex-col items-center justify-center gap-2 py-12 text-center">
               <Package className="h-10 w-10 text-slate-300 dark:text-slate-600" />
               <p className="text-sm text-slate-400 dark:text-slate-500">
@@ -794,14 +834,15 @@ export default function POSInterface({
             </div>
           ) : (
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
-              {visibleProducts.map((p) => (
+              {displayItems.map((it) => (
                 <ProductCard
-                  key={p.id}
-                  product={p}
-                  rank={!trimmedSearch && activeCategory === 'all' ? rankMap.get(p.id) || null : null}
+                  key={it.key}
+                  product={it.product}
+                  variant={it.variant}
+                  rank={!trimmedSearch && activeCategory === 'all' && !it.variant ? rankMap.get(it.product.id) || null : null}
                   catName={catNameFn}
                   rates={rates}
-                  onAdd={() => addToCart(p)}
+                  onAdd={() => addToCart(it.product, it.variant)}
                   familyMode={isFamilyMode}
                 />
               ))}
@@ -991,31 +1032,52 @@ export default function POSInterface({
 // =========================================================================
 // ProductCard
 // =========================================================================
-function ProductCard({ product: p, rank, catName, rates, onAdd, familyMode }) {
-  const lowStock = p.stock <= p.min_stock;
-  const noStock = p.stock <= 0;
-  const stockUnit = (p.unit && p.unit[0]) || 'u';
-  const fractional = isFractionalUnit(p.unit);
+function ProductCard({ product: p, variant, rank, catName, rates, onAdd, familyMode }) {
+  // Stock disponible para esta tarjeta. Si hay variant, mostramos cuántas
+  // presentaciones completas caben en el stock base (ej. 180 huevos / 30 por
+  // cartón = 6 cartones).
+  const baseQty = variant ? Number(variant.base_quantity || 1) : 1;
+  const variantStock = variant ? Math.floor(Number(p.stock || 0) / baseQty) : Number(p.stock || 0);
+  const variantMinStock = variant
+    ? Math.floor(Number(p.min_stock || 0) / baseQty)
+    : Number(p.min_stock || 0);
+  const lowStock = variantStock <= variantMinStock;
+  const noStock = variantStock <= 0;
+  const fractional = !variant && isFractionalUnit(p.unit);
+  const stockUnit = variant
+    ? (variant.name.length > 6 ? variant.name.slice(0, 5) + '.' : variant.name)
+    : ((p.unit && p.unit[0]) || 'u');
 
   const rinoRate = Number(rates?.rino_cop_ves);
   const paraleloRate = Number(rates?.usd_ves_paralelo) || 0;
   const usdCop = Number(rates?.usd_cop) || 0;
 
-  // En modo familia, los precios en COP y Bs. se calculan a partir del
-  // cost_avg (USD) en lugar de los precios de venta guardados. Esto refleja
-  // el costo real al que se le carga al consumo interno.
+  // USD base: variant.price_usd / product.price_usd / cost_avg (familia)
+  let usdValue;
+  if (familyMode) {
+    const costPerBase = Number(p.cost_avg) || 0;
+    usdValue = variant ? costPerBase * baseQty : costPerBase;
+  } else {
+    usdValue = variant ? Number(variant.price_usd || 0) : Number(p.price_usd || 0);
+  }
+
+  // COP y Bs. con la regla del negocio
   let priceCop, priceVes;
   if (familyMode) {
-    const costUsd = Number(p.cost_avg) || 0;
-    priceCop = costUsd * usdCop;
+    priceCop = usdValue * usdCop;
     priceVes = rinoRate > 0 && priceCop > 0
       ? copToVes(priceCop, rinoRate)
-      : costUsd * paraleloRate;
-  } else {
-    priceCop = Number(p.price_cop) || (Number(p.price_usd) * usdCop);
+      : usdValue * paraleloRate;
+  } else if (variant) {
+    priceCop = Number(variant.price_cop) || (usdValue * usdCop);
     priceVes = rinoRate > 0
       ? copToVes(priceCop, rinoRate)
-      : Number(p.price_usd) * paraleloRate;
+      : usdValue * paraleloRate;
+  } else {
+    priceCop = Number(p.price_cop) || (usdValue * usdCop);
+    priceVes = rinoRate > 0
+      ? copToVes(priceCop, rinoRate)
+      : usdValue * paraleloRate;
   }
   return (
     <button
@@ -1038,16 +1100,23 @@ function ProductCard({ product: p, rank, catName, rates, onAdd, familyMode }) {
             : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400'
         }`}
       >
-        {noStock ? 'Sin stock' : `${Number(p.stock).toLocaleString('es-VE')} ${stockUnit}`}
+        {noStock ? 'Sin stock' : `${variantStock.toLocaleString('es-VE')} ${stockUnit}`}
       </span>
 
       <div className={typeof rank === 'number' ? 'mt-6' : 'mt-0'} />
 
       <span className="line-clamp-2 pr-12 text-sm font-semibold text-slate-900 dark:text-slate-100">
         {p.name}
+        {variant && (
+          <span className="ml-1 text-[11px] font-medium text-brand-600 dark:text-brand-400">
+            · {variant.name}
+          </span>
+        )}
       </span>
       <span className="text-[10px] uppercase tracking-wide text-slate-400 dark:text-slate-500">
-        SKU | {p.sku || catName(p.category_id)}
+        {variant
+          ? `${variant.base_quantity} ${p.unit || 'u'} base`
+          : `SKU | ${p.sku || catName(p.category_id)}`}
       </span>
 
       <div className="mt-auto space-y-0.5 pt-2">
@@ -1057,9 +1126,7 @@ function ProductCard({ product: p, rank, catName, rates, onAdd, familyMode }) {
             : 'text-emerald-700 dark:text-emerald-400'
         }`}>
           <span className="text-lg font-bold leading-tight">
-            {familyMode
-              ? formatMoney(p.cost_avg, 'USD')
-              : formatMoney(p.price_usd, 'USD')}
+            {formatMoney(usdValue, 'USD')}
           </span>
           {fractional && (
             <span className="text-[10px] font-normal uppercase tracking-wider text-slate-500 dark:text-slate-400">
@@ -1216,62 +1283,81 @@ function CartPanel({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-              {cart.map((it) => (
-                <tr key={it.product.id}>
-                  <td className="px-4 py-2.5">
-                    <div className="font-medium text-slate-900 dark:text-slate-100 line-clamp-1">
-                      {it.product.name}
-                    </div>
-                    {it.product.sku && (
-                      <div className="text-[10px] uppercase tracking-wide text-slate-400 dark:text-slate-500">
-                        {it.product.sku}
+              {cart.map((it) => {
+                const key = `${it.product.id}|${it.variant?.id || ''}`;
+                const lineFractional = !it.variant && isFractionalUnit(it.product.unit);
+                const lineStep = it.variant ? 1 : qtyStepFor(it.product.unit);
+                const unitUsd = familyMode
+                  ? (it.variant
+                      ? Number(it.product.cost_avg || 0) * Number(it.variant.base_quantity || 1)
+                      : Number(it.product.cost_avg || 0))
+                  : (it.variant
+                      ? Number(it.variant.price_usd || 0)
+                      : Number(it.product.price_usd || 0));
+                return (
+                  <tr key={key}>
+                    <td className="px-4 py-2.5">
+                      <div className="font-medium text-slate-900 dark:text-slate-100 line-clamp-1">
+                        {it.product.name}
+                        {it.variant && (
+                          <span className="ml-1 text-xs font-normal text-brand-600 dark:text-brand-400">
+                            · {it.variant.name}
+                          </span>
+                        )}
                       </div>
-                    )}
-                  </td>
-                  <td className="px-3 py-2.5">
-                    <div className="flex items-center justify-center gap-1">
-                      <button onClick={() => onChangeQty(it.product.id, -1)}
-                        className="flex h-7 w-7 items-center justify-center rounded-md border border-slate-200 hover:bg-slate-50 active:scale-95 dark:border-slate-700 dark:hover:bg-slate-800"
-                        aria-label="Restar">
-                        <Minus className="h-3 w-3" />
+                      {it.variant ? (
+                        <div className="text-[10px] uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                          {it.variant.base_quantity} {it.product.unit || 'u'} base · resta {Number(it.variant.base_quantity) * it.qty}
+                        </div>
+                      ) : it.product.sku && (
+                        <div className="text-[10px] uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                          {it.product.sku}
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-3 py-2.5">
+                      <div className="flex items-center justify-center gap-1">
+                        <button onClick={() => onChangeQty(key, -1)}
+                          className="flex h-7 w-7 items-center justify-center rounded-md border border-slate-200 hover:bg-slate-50 active:scale-95 dark:border-slate-700 dark:hover:bg-slate-800"
+                          aria-label="Restar">
+                          <Minus className="h-3 w-3" />
+                        </button>
+                        <input
+                          type="number"
+                          step={lineStep}
+                          value={it.qty}
+                          onChange={(e) => onSetQty(key, e.target.value)}
+                          className={`h-7 ${lineFractional ? 'w-16' : 'w-12'} rounded-md border border-slate-200 bg-white text-center text-xs font-semibold text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100`}
+                          min="0"
+                        />
+                        <button onClick={() => onChangeQty(key, 1)}
+                          className="flex h-7 w-7 items-center justify-center rounded-md border border-slate-200 hover:bg-slate-50 active:scale-95 dark:border-slate-700 dark:hover:bg-slate-800"
+                          aria-label="Sumar">
+                          <Plus className="h-3 w-3" />
+                        </button>
+                      </div>
+                      {lineFractional && (
+                        <p className="mt-0.5 text-center text-[10px] text-slate-400 dark:text-slate-500">
+                          {it.product.unit}
+                        </p>
+                      )}
+                    </td>
+                    <td className="px-3 py-2.5 text-right text-slate-700 dark:text-slate-300">
+                      {formatMoney(unitUsd)}
+                    </td>
+                    <td className="px-3 py-2.5 text-right font-semibold text-slate-900 dark:text-slate-100">
+                      {formatMoney(unitUsd * it.qty)}
+                    </td>
+                    <td className="px-2 py-2.5 text-right">
+                      <button onClick={() => onRemove(key)}
+                        className="rounded-md p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-500/10 dark:hover:text-red-400"
+                        aria-label="Eliminar">
+                        <Trash2 className="h-4 w-4" />
                       </button>
-                      <input
-                        type="number"
-                        step={qtyStepFor(it.product.unit)}
-                        value={it.qty}
-                        onChange={(e) => onSetQty(it.product.id, e.target.value)}
-                        className={`h-7 ${isFractionalUnit(it.product.unit) ? 'w-16' : 'w-12'} rounded-md border border-slate-200 bg-white text-center text-xs font-semibold text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100`}
-                        min="0"
-                      />
-                      <button onClick={() => onChangeQty(it.product.id, 1)}
-                        className="flex h-7 w-7 items-center justify-center rounded-md border border-slate-200 hover:bg-slate-50 active:scale-95 dark:border-slate-700 dark:hover:bg-slate-800"
-                        aria-label="Sumar">
-                        <Plus className="h-3 w-3" />
-                      </button>
-                    </div>
-                    {isFractionalUnit(it.product.unit) && (
-                      <p className="mt-0.5 text-center text-[10px] text-slate-400 dark:text-slate-500">
-                        {it.product.unit}
-                      </p>
-                    )}
-                  </td>
-                  <td className="px-3 py-2.5 text-right text-slate-700 dark:text-slate-300">
-                    {formatMoney(familyMode ? it.product.cost_avg : it.product.price_usd)}
-                  </td>
-                  <td className="px-3 py-2.5 text-right font-semibold text-slate-900 dark:text-slate-100">
-                    {formatMoney(
-                      Number(familyMode ? it.product.cost_avg : it.product.price_usd) * it.qty
-                    )}
-                  </td>
-                  <td className="px-2 py-2.5 text-right">
-                    <button onClick={() => onRemove(it.product.id)}
-                      className="rounded-md p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-500/10 dark:hover:text-red-400"
-                      aria-label="Eliminar">
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         )}

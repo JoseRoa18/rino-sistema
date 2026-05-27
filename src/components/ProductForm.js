@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useMemo } from 'react';
-import { X, Calculator, TrendingUp, Lock, AlertTriangle } from 'lucide-react';
+import { useState, useMemo, useEffect } from 'react';
+import { X, Calculator, TrendingUp, Lock, AlertTriangle, Plus, Trash2, Layers } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { priceWithMargin, copToVes } from '@/lib/pricing';
 
@@ -87,6 +87,67 @@ export default function ProductForm({ product, categories, rates, onClose, onSav
   const [costDraftUsd, setCostDraftUsd] = useState(String(product?.cost_avg ?? 0));
   const [costDraftCop, setCostDraftCop] = useState('');
   const [costDraftVes, setCostDraftVes] = useState('');
+
+  // Presentaciones de venta (variants). Cada item: { id?, name, base_quantity,
+  // price_usd, price_cop, price_ves, _new, _deleted }
+  const [variants, setVariants] = useState([]);
+  const [variantsLoading, setVariantsLoading] = useState(false);
+
+  // Cargar variants existentes al editar
+  useEffect(() => {
+    if (!product?.id) return;
+    let cancelled = false;
+    setVariantsLoading(true);
+    supabase
+      .from('product_variants')
+      .select('*')
+      .eq('product_id', product.id)
+      .order('sort_order', { ascending: true })
+      .then(({ data, error: vErr }) => {
+        if (cancelled) return;
+        if (vErr) {
+          // Probable migración no aplicada; silenciamos y dejamos vacío
+          console.warn('No se pudieron cargar variants:', vErr.message);
+          setVariants([]);
+        } else {
+          setVariants((data || []).map((v) => ({ ...v, _new: false, _deleted: false })));
+        }
+        setVariantsLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [product?.id, supabase]);
+
+  function addVariant() {
+    setVariants((prev) => [
+      ...prev,
+      {
+        _new: true,
+        name: '',
+        base_quantity: 1,
+        price_usd: 0,
+        price_cop: 0,
+        price_ves: 0,
+        sort_order: prev.length,
+        active: true,
+      },
+    ]);
+  }
+
+  function updateVariant(idx, field, value) {
+    setVariants((prev) => prev.map((v, i) => (i === idx ? { ...v, [field]: value } : v)));
+  }
+
+  function removeVariant(idx) {
+    setVariants((prev) => {
+      const v = prev[idx];
+      if (v._new) {
+        // Si nunca se guardó, quitar de la lista
+        return prev.filter((_, i) => i !== idx);
+      }
+      // Marcar para borrar en submit
+      return prev.map((it, i) => (i === idx ? { ...it, _deleted: true } : it));
+    });
+  }
 
   // Conversión en vivo del costo basada en la moneda fuente activa.
   const displayedCosts = useMemo(() => {
@@ -242,18 +303,84 @@ export default function ProductForm({ product, categories, rates, onClose, onSav
       active: form.active,
     };
 
-    let res;
-    if (product?.id) {
-      res = await supabase.from('products').update(payload).eq('id', product.id);
+    let productId = product?.id || null;
+    if (productId) {
+      const { error: upErr } = await supabase.from('products').update(payload).eq('id', productId);
+      if (upErr) {
+        setError(upErr.message);
+        setSaving(false);
+        return;
+      }
     } else {
-      res = await supabase.from('products').insert(payload);
+      const { data: ins, error: insErr } = await supabase
+        .from('products')
+        .insert(payload)
+        .select('id')
+        .single();
+      if (insErr) {
+        setError(insErr.message);
+        setSaving(false);
+        return;
+      }
+      productId = ins?.id;
     }
 
-    if (res.error) {
-      setError(res.error.message);
-      setSaving(false);
-      return;
+    // Sincronizar variants: borrar las marcadas _deleted, actualizar
+    // existentes y crear las nuevas. Solo si productId existe.
+    if (productId) {
+      try {
+        // 1) Borrar las marcadas
+        const toDelete = variants.filter((v) => v.id && v._deleted).map((v) => v.id);
+        if (toDelete.length > 0) {
+          const { error: delErr } = await supabase
+            .from('product_variants')
+            .delete()
+            .in('id', toDelete);
+          if (delErr) throw delErr;
+        }
+
+        // 2) Insertar nuevas (sin _deleted y _new=true) — solo si tienen nombre
+        const toInsert = variants
+          .filter((v) => v._new && !v._deleted && v.name?.trim())
+          .map((v, idx) => ({
+            product_id: productId,
+            name: v.name.trim(),
+            base_quantity: Number(v.base_quantity) || 1,
+            price_usd: Number(v.price_usd) || 0,
+            price_cop: Number(v.price_cop) || 0,
+            price_ves: Number(v.price_ves) || 0,
+            sort_order: idx,
+            active: v.active !== false,
+          }));
+        if (toInsert.length > 0) {
+          const { error: insErr } = await supabase.from('product_variants').insert(toInsert);
+          if (insErr) throw insErr;
+        }
+
+        // 3) Actualizar existentes (id presente y no _deleted)
+        const toUpdate = variants.filter((v) => v.id && !v._deleted && !v._new);
+        for (const v of toUpdate) {
+          const { error: upErr } = await supabase
+            .from('product_variants')
+            .update({
+              name: v.name?.trim() || v.name,
+              base_quantity: Number(v.base_quantity) || 1,
+              price_usd: Number(v.price_usd) || 0,
+              price_cop: Number(v.price_cop) || 0,
+              price_ves: Number(v.price_ves) || 0,
+              sort_order: v.sort_order ?? 0,
+              active: v.active !== false,
+            })
+            .eq('id', v.id);
+          if (upErr) throw upErr;
+        }
+      } catch (vErr) {
+        setError(`Producto guardado, pero falló al sincronizar presentaciones: ${vErr.message}`);
+        setSaving(false);
+        return;
+      }
     }
+
     onSaved?.();
   }
 
@@ -483,6 +610,107 @@ export default function ProductForm({ product, categories, rates, onClose, onSav
                 </p>
               </div>
             </div>
+          </fieldset>
+
+          <fieldset className="rounded-lg border border-slate-200 p-3 dark:border-slate-700">
+            <legend className="flex items-center gap-1.5 px-2 text-xs font-medium text-slate-500 dark:text-slate-400">
+              <Layers className="h-3 w-3" />
+              Presentaciones de venta (opcional)
+            </legend>
+
+            <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">
+              Define presentaciones que comparten el mismo stock. Ej. <strong>Huevos</strong>:
+              caja (180), cartón (30), medio (15), unidad (1). El stock se lleva en la
+              unidad base ({form.unit}); cada presentación define cuántas unidades base
+              consume al venderse.
+            </p>
+
+            {variantsLoading && (
+              <p className="text-xs text-slate-400">Cargando presentaciones...</p>
+            )}
+
+            {variants.filter((v) => !v._deleted).length > 0 && (
+              <div className="space-y-2">
+                {variants.map((v, idx) =>
+                  v._deleted ? null : (
+                    <div
+                      key={v.id || `new-${idx}`}
+                      className="grid grid-cols-12 gap-2 rounded-md border border-slate-200 bg-slate-50/50 p-2 dark:border-slate-700 dark:bg-slate-800/30"
+                    >
+                      <div className="col-span-12 sm:col-span-3">
+                        <label className="text-[10px] uppercase tracking-wide text-slate-400">Nombre</label>
+                        <input
+                          className="input h-8 text-sm"
+                          value={v.name}
+                          onChange={(e) => updateVariant(idx, 'name', e.target.value)}
+                          placeholder="Cartón"
+                        />
+                      </div>
+                      <div className="col-span-4 sm:col-span-2">
+                        <label className="text-[10px] uppercase tracking-wide text-slate-400">Equivale a</label>
+                        <input
+                          type="number"
+                          step="0.001"
+                          className="input h-8 text-sm"
+                          value={v.base_quantity}
+                          onChange={(e) => updateVariant(idx, 'base_quantity', e.target.value)}
+                          placeholder="30"
+                        />
+                      </div>
+                      <div className="col-span-8 sm:col-span-2">
+                        <label className="text-[10px] uppercase tracking-wide text-slate-400">USD</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          className="input h-8 text-sm"
+                          value={v.price_usd}
+                          onChange={(e) => updateVariant(idx, 'price_usd', e.target.value)}
+                        />
+                      </div>
+                      <div className="col-span-6 sm:col-span-2">
+                        <label className="text-[10px] uppercase tracking-wide text-slate-400">COP</label>
+                        <input
+                          type="number"
+                          step="1"
+                          className="input h-8 text-sm"
+                          value={v.price_cop}
+                          onChange={(e) => updateVariant(idx, 'price_cop', e.target.value)}
+                        />
+                      </div>
+                      <div className="col-span-6 sm:col-span-2">
+                        <label className="text-[10px] uppercase tracking-wide text-slate-400">Bs.</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          className="input h-8 text-sm"
+                          value={v.price_ves}
+                          onChange={(e) => updateVariant(idx, 'price_ves', e.target.value)}
+                        />
+                      </div>
+                      <div className="col-span-12 flex items-end justify-end sm:col-span-1">
+                        <button
+                          type="button"
+                          onClick={() => removeVariant(idx)}
+                          className="rounded-md p-1.5 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10"
+                          title="Quitar presentación"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+                  )
+                )}
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={addVariant}
+              className="mt-3 flex items-center gap-1.5 rounded-md border border-dashed border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Agregar presentación
+            </button>
           </fieldset>
 
           <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
