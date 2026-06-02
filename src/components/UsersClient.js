@@ -3,7 +3,7 @@
 import { useMemo, useState, useTransition } from 'react';
 import {
   Users, UserPlus, Shield, ShieldCheck, ShieldAlert,
-  KeyRound, Pencil, Power, PowerOff, AlertCircle, CheckCircle2,
+  KeyRound, Pencil, Trash2, Power, PowerOff, AlertCircle, CheckCircle2,
   X, Eye, EyeOff, Activity, DollarSign, Clock,
 } from 'lucide-react';
 import KPICard from './KPICard';
@@ -13,6 +13,7 @@ import {
   createUserAction,
   updateUserAction,
   setUserPasswordAction,
+  deleteUserAction,
 } from '@/app/(dashboard)/usuarios/actions';
 
 const ROLE_META = {
@@ -37,6 +38,7 @@ export default function UsersClient({ users: initialUsers, currentUser, loadErro
   const [showNew, setShowNew] = useState(false);
   const [editTarget, setEditTarget] = useState(null);
   const [passwordTarget, setPasswordTarget] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
   const [flash, setFlash] = useState(null); // { type: 'success'|'error', text }
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('all');
@@ -255,6 +257,15 @@ export default function UsersClient({ users: initialUsers, currentUser, loadErro
                         >
                           <KeyRound className="h-4 w-4" />
                         </button>
+                        {isAdmin && (
+                          <button
+                            onClick={() => setDeleteTarget(u)}
+                            className="rounded-md p-1.5 text-slate-500 hover:bg-rose-100 hover:text-rose-700 dark:hover:bg-rose-500/15 dark:hover:text-rose-400"
+                            title="Eliminar"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        )}
                       </div>
                     ) : (
                       <span className="text-xs text-slate-400">—</span>
@@ -304,6 +315,31 @@ export default function UsersClient({ users: initialUsers, currentUser, loadErro
           onError={handleError}
         />
       )}
+      {deleteTarget && (
+        <DeleteUserModal
+          user={deleteTarget}
+          onClose={() => setDeleteTarget(null)}
+          onDone={(result) => {
+            // result puede traer { softDeleted, message }
+            setUsers((prev) =>
+              result.softDeleted
+                ? prev.map((u) =>
+                    u.id === deleteTarget.id ? { ...u, active: false } : u
+                  )
+                : prev.filter((u) => u.id !== deleteTarget.id)
+            );
+            const wasSoft = result.softDeleted;
+            const name = deleteTarget.full_name;
+            setDeleteTarget(null);
+            handleSuccess(
+              wasSoft
+                ? result.message || `${name} se desactivó (tenía registros asociados).`
+                : `${name} fue eliminado correctamente.`
+            );
+          }}
+          onError={handleError}
+        />
+      )}
     </div>
   );
 }
@@ -313,7 +349,6 @@ export default function UsersClient({ users: initialUsers, currentUser, loadErro
 // =========================================================================
 function UserForm({ mode, initialUser, currentUserRole, onClose, onSaved, onError }) {
   const isEdit = mode === 'edit';
-  const isSupervisor = currentUserRole === 'supervisor';
 
   const [form, setForm] = useState({
     email:     initialUser?.email || '',
@@ -428,18 +463,15 @@ function UserForm({ mode, initialUser, currentUserRole, onClose, onSaved, onErro
             <label className="label">Rol</label>
             <select
               className="input"
-              value={form.role}
+              value={form.role === 'supervisor' ? 'cajero' : form.role}
               onChange={(e) => update('role', e.target.value)}
             >
               <option value="cajero">Cajero</option>
-              <option value="supervisor">Supervisor</option>
-              {!isSupervisor && <option value="admin">Admin</option>}
+              <option value="admin">Administrador</option>
             </select>
-            {isSupervisor && (
-              <p className="mt-1 text-[10px] text-amber-600 dark:text-amber-400">
-                Solo admin puede asignar el rol "Admin".
-              </p>
-            )}
+            <p className="mt-1 text-[10px] text-slate-500 dark:text-slate-400">
+              Administrador: acceso total. Cajero: solo POS.
+            </p>
           </div>
           {isEdit && (
             <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
@@ -576,6 +608,103 @@ function PasswordModal({ user, onClose, onSaved, onError }) {
             <button type="button" onClick={onClose} className="btn-secondary">Cancelar</button>
             <button type="submit" disabled={pending} className="btn-primary">
               {pending ? 'Actualizando...' : 'Cambiar contraseña'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// =========================================================================
+// DeleteUserModal: confirma y elimina al usuario
+// =========================================================================
+function DeleteUserModal({ user, onClose, onDone, onError }) {
+  const [pending, startTransition] = useTransition();
+  const [error, setError] = useState('');
+  const [confirmText, setConfirmText] = useState('');
+
+  // Para evitar borrados accidentales, pedimos que el admin escriba el
+  // nombre del usuario.
+  const expected = (user.full_name || '').trim();
+  const canDelete = confirmText.trim() === expected;
+
+  function submit(e) {
+    e.preventDefault();
+    setError('');
+    if (!canDelete) {
+      setError('Escribe el nombre exacto para confirmar');
+      return;
+    }
+    startTransition(async () => {
+      const res = await deleteUserAction({ userId: user.id });
+      if (!res.ok) {
+        setError(res.error);
+        onError(res.error);
+        return;
+      }
+      onDone({ softDeleted: res.softDeleted, message: res.message });
+    });
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
+      <div className="card w-full max-w-md">
+        <div className="flex items-center justify-between border-b border-slate-200 p-4 dark:border-slate-700">
+          <h2 className="flex items-center gap-2 text-lg font-semibold text-rose-700 dark:text-rose-400">
+            <Trash2 className="h-5 w-5" />
+            Eliminar usuario
+          </h2>
+          <button onClick={onClose} className="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <form onSubmit={submit} className="space-y-4 p-4">
+          <div className="rounded-lg bg-slate-50 p-3 text-sm dark:bg-slate-800/50">
+            <p className="font-medium text-slate-900 dark:text-slate-100">{user.full_name}</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400">{user.email}</p>
+          </div>
+
+          <div className="flex items-start gap-2 rounded-lg bg-rose-50 p-3 text-xs text-rose-700 dark:bg-rose-500/10 dark:text-rose-400">
+            <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+            <div>
+              <p className="font-semibold">Esta acción no se puede deshacer.</p>
+              <p className="mt-1">
+                Si el usuario tiene ventas u otros registros asociados, no se
+                podrá borrar definitivamente y se desactivará en su lugar.
+              </p>
+            </div>
+          </div>
+
+          <div>
+            <label className="label">
+              Escribe <strong className="font-mono">{expected}</strong> para confirmar
+            </label>
+            <input
+              className="input"
+              value={confirmText}
+              onChange={(e) => setConfirmText(e.target.value)}
+              autoFocus
+            />
+          </div>
+
+          {error && (
+            <div className="flex items-start gap-2 rounded-lg bg-rose-50 p-3 text-sm text-rose-700 dark:bg-rose-500/10 dark:text-rose-400">
+              <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+              <span>{error}</span>
+            </div>
+          )}
+
+          <div className="flex justify-end gap-2 border-t border-slate-200 pt-4 dark:border-slate-700">
+            <button type="button" onClick={onClose} className="btn-secondary">Cancelar</button>
+            <button
+              type="submit"
+              disabled={pending || !canDelete}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:bg-rose-300 dark:disabled:bg-rose-900/50"
+            >
+              <Trash2 className="h-4 w-4" />
+              {pending ? 'Eliminando...' : 'Eliminar usuario'}
             </button>
           </div>
         </form>

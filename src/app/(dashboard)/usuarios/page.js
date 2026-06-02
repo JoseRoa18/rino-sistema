@@ -9,7 +9,7 @@ export default async function UsersPage() {
   const profile = await getCurrentProfile();
 
   if (!profile) redirect('/login');
-  if (profile.role !== 'admin' && profile.role !== 'supervisor') {
+  if (profile.role !== 'admin') {
     redirect('/dashboard');
   }
 

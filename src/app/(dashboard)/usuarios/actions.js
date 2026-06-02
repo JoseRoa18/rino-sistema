@@ -4,26 +4,24 @@ import { revalidatePath } from 'next/cache';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { getCurrentProfile } from '@/lib/auth';
 
-const ALLOWED_ROLES = ['admin', 'supervisor', 'cajero'];
+// El sistema sólo distingue admin y cajero. La gestión de usuarios es
+// exclusiva del administrador.
+const ALLOWED_ROLES = ['admin', 'cajero'];
 
-async function requireAdminOrSupervisor() {
+async function requireAdmin() {
   const me = await getCurrentProfile();
   if (!me) return { error: 'No autenticado' };
-  if (me.role !== 'admin' && me.role !== 'supervisor') {
-    return { error: 'Sin permisos para gestionar usuarios' };
+  if (me.role !== 'admin') {
+    return { error: 'Solo el administrador puede gestionar usuarios' };
   }
   return { me };
 }
 
 /**
  * Crea un usuario nuevo en Supabase Auth + su fila en profiles.
- *
- * Reglas:
- *   - admin puede crear cualquier rol
- *   - supervisor puede crear supervisor o cajero, NO admin
  */
 export async function createUserAction({ email, password, full_name, role }) {
-  const guard = await requireAdminOrSupervisor();
+  const guard = await requireAdmin();
   if (guard.error) return { ok: false, error: guard.error };
 
   if (!email || !password || !full_name) {
@@ -33,15 +31,11 @@ export async function createUserAction({ email, password, full_name, role }) {
     return { ok: false, error: 'La contraseña debe tener al menos 6 caracteres' };
   }
   if (!ALLOWED_ROLES.includes(role)) {
-    return { ok: false, error: 'Rol inválido' };
-  }
-  if (guard.me.role === 'supervisor' && role === 'admin') {
-    return { ok: false, error: 'Solo admin puede crear usuarios con rol admin' };
+    return { ok: false, error: 'Rol inválido. Sólo admin o cajero.' };
   }
 
   const admin = createServiceClient();
 
-  // 1) Crear en auth.users con email confirmado (no espera verificación)
   const { data: created, error: authErr } = await admin.auth.admin.createUser({
     email: email.trim().toLowerCase(),
     password,
@@ -50,7 +44,6 @@ export async function createUserAction({ email, password, full_name, role }) {
   });
   if (authErr) return { ok: false, error: authErr.message };
 
-  // 2) Crear/upsert fila en profiles (puede que un trigger ya la haya creado)
   const { error: profErr } = await admin
     .from('profiles')
     .upsert({
@@ -62,12 +55,10 @@ export async function createUserAction({ email, password, full_name, role }) {
     }, { onConflict: 'id' });
 
   if (profErr) {
-    // Rollback: borrar el usuario auth si falla la creación del profile
     await admin.auth.admin.deleteUser(created.user.id);
     return { ok: false, error: profErr.message };
   }
 
-  // 3) Auditoría
   await admin.from('audit_log').insert({
     user_id: guard.me.id,
     action: 'create_user',
@@ -82,21 +73,16 @@ export async function createUserAction({ email, password, full_name, role }) {
 
 /**
  * Actualiza rol, nombre o estado activo de un usuario.
- *
- * Reglas:
- *   - supervisor NO puede modificar admins
- *   - supervisor NO puede asignar rol admin
- *   - nadie puede modificarse a sí mismo (para evitar lockouts)
  */
 export async function updateUserAction({ userId, role, active, full_name }) {
-  const guard = await requireAdminOrSupervisor();
+  const guard = await requireAdmin();
   if (guard.error) return { ok: false, error: guard.error };
 
   if (userId === guard.me.id) {
     return { ok: false, error: 'No puedes modificar tu propio usuario desde esta pantalla' };
   }
   if (role !== undefined && !ALLOWED_ROLES.includes(role)) {
-    return { ok: false, error: 'Rol inválido' };
+    return { ok: false, error: 'Rol inválido. Sólo admin o cajero.' };
   }
 
   const admin = createServiceClient();
@@ -107,16 +93,6 @@ export async function updateUserAction({ userId, role, active, full_name }) {
     .single();
   if (tErr || !target) return { ok: false, error: 'Usuario no encontrado' };
 
-  // Restricciones para supervisor
-  if (guard.me.role === 'supervisor') {
-    if (target.role === 'admin') {
-      return { ok: false, error: 'Supervisor no puede modificar usuarios admin' };
-    }
-    if (role === 'admin') {
-      return { ok: false, error: 'Solo admin puede asignar rol admin' };
-    }
-  }
-
   const update = {};
   if (role !== undefined) update.role = role;
   if (active !== undefined) update.active = active;
@@ -126,7 +102,6 @@ export async function updateUserAction({ userId, role, active, full_name }) {
   const { error: upErr } = await admin.from('profiles').update(update).eq('id', userId);
   if (upErr) return { ok: false, error: upErr.message };
 
-  // Auditoría
   await admin.from('audit_log').insert({
     user_id: guard.me.id,
     action: 'update_user',
@@ -140,14 +115,10 @@ export async function updateUserAction({ userId, role, active, full_name }) {
 }
 
 /**
- * Cambia la contraseña de un usuario directamente (admin override).
- * El admin/supervisor le entrega la nueva contraseña al empleado.
- *
- * Reglas:
- *   - supervisor NO puede cambiar contraseña de admin
+ * Cambia la contraseña de un usuario directamente.
  */
 export async function setUserPasswordAction({ userId, newPassword }) {
-  const guard = await requireAdminOrSupervisor();
+  const guard = await requireAdmin();
   if (guard.error) return { ok: false, error: guard.error };
 
   if (!newPassword || newPassword.length < 6) {
@@ -162,14 +133,9 @@ export async function setUserPasswordAction({ userId, newPassword }) {
     .single();
   if (tErr || !target) return { ok: false, error: 'Usuario no encontrado' };
 
-  if (guard.me.role === 'supervisor' && target.role === 'admin') {
-    return { ok: false, error: 'Supervisor no puede cambiar contraseña de admin' };
-  }
-
   const { error } = await admin.auth.admin.updateUserById(userId, { password: newPassword });
   if (error) return { ok: false, error: error.message };
 
-  // Auditoría (NO guardamos la contraseña, solo el evento)
   await admin.from('audit_log').insert({
     user_id: guard.me.id,
     action: 'reset_password',
@@ -179,4 +145,77 @@ export async function setUserPasswordAction({ userId, newPassword }) {
   });
 
   return { ok: true };
+}
+
+/**
+ * Elimina un usuario. Borra primero de auth.users (lo que cascadea
+ * borrado del profile vía FK). Si el usuario tiene ventas, créditos o
+ * cualquier registro asociado, el FK lo bloquea y devolvemos un error
+ * sugerente: en ese caso se hace soft delete (active = false).
+ *
+ * Sólo el administrador puede ejecutar esta acción.
+ */
+export async function deleteUserAction({ userId }) {
+  const guard = await requireAdmin();
+  if (guard.error) return { ok: false, error: guard.error };
+
+  if (userId === guard.me.id) {
+    return { ok: false, error: 'No puedes eliminarte a ti mismo' };
+  }
+
+  const admin = createServiceClient();
+  const { data: target, error: tErr } = await admin
+    .from('profiles')
+    .select('email, full_name, role')
+    .eq('id', userId)
+    .single();
+  if (tErr || !target) return { ok: false, error: 'Usuario no encontrado' };
+
+  // 1) Intentar hard delete (a través de auth.users, cascade a profile)
+  const { error: delErr } = await admin.auth.admin.deleteUser(userId);
+
+  if (delErr) {
+    // 2) Si falla por FK (tiene ventas asociadas, etc.), hacer soft delete
+    const isFkError =
+      String(delErr.message || '').toLowerCase().includes('foreign key') ||
+      delErr.code === '23503';
+
+    if (isFkError) {
+      const { error: deactErr } = await admin
+        .from('profiles')
+        .update({ active: false })
+        .eq('id', userId);
+      if (deactErr) return { ok: false, error: deactErr.message };
+
+      await admin.from('audit_log').insert({
+        user_id: guard.me.id,
+        action: 'deactivate_user',
+        entity_type: 'profile',
+        entity_id: userId,
+        details: {
+          email: target.email,
+          reason: 'tiene registros asociados (ventas/créditos), se desactivó en su lugar',
+        },
+      });
+
+      revalidatePath('/usuarios');
+      return {
+        ok: true,
+        softDeleted: true,
+        message: `${target.full_name} tiene ventas o registros asociados; se desactivó en lugar de eliminarse.`,
+      };
+    }
+    return { ok: false, error: delErr.message };
+  }
+
+  await admin.from('audit_log').insert({
+    user_id: guard.me.id,
+    action: 'delete_user',
+    entity_type: 'profile',
+    entity_id: userId,
+    details: { email: target.email, full_name: target.full_name, role: target.role },
+  });
+
+  revalidatePath('/usuarios');
+  return { ok: true, softDeleted: false };
 }
