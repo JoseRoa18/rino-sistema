@@ -108,12 +108,13 @@ export default function UsersClient({ users: initialUsers, currentUser, loadErro
       <PageHeader
         title="Usuarios"
         subtitle="Gestión de cuentas, roles y permisos del equipo"
-      >
-        <button onClick={() => setShowNew(true)} className="btn-primary">
-          <UserPlus className="h-4 w-4" />
-          Nuevo usuario
-        </button>
-      </PageHeader>
+        actions={
+          <button onClick={() => setShowNew(true)} className="btn-primary">
+            <UserPlus className="h-4 w-4" />
+            Nuevo usuario
+          </button>
+        }
+      />
 
       {flash && (
         <div className={`flex items-start gap-2 rounded-lg p-3 text-sm ${
