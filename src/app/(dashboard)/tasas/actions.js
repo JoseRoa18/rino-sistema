@@ -3,6 +3,7 @@
 import { revalidateTag, revalidatePath } from 'next/cache';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { fetchAllRates } from '@/lib/exchange-rates';
+import { todayStr } from '@/lib/dates';
 
 /**
  * Refresca las tasas desde las fuentes externas y las guarda en BD.
@@ -33,7 +34,7 @@ export async function refreshRatesAction() {
   }
 
   const service = createServiceClient();
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayStr();
 
   const { data, error } = await service
     .from('exchange_rates')
@@ -92,7 +93,7 @@ export async function updateCustomRateAction(value) {
   }
 
   const service = createServiceClient();
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayStr();
 
   const { data, error } = await service
     .from('exchange_rates')
@@ -145,7 +146,7 @@ export async function ensureFreshRates(maxAgeMinutes = 60) {
     return { refreshed: false, error: 'fuentes no disponibles' };
   }
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayStr();
   await service
     .from('exchange_rates')
     .upsert(

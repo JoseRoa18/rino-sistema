@@ -67,9 +67,11 @@ export default async function DashboardPage() {
     ? (Number(kpis.profit_month_usd) / Number(kpis.sales_month_usd)) * 100
     : 0;
 
-  // Día actual (label legible para el SectionLabel)
+  // Día actual en zona horaria Caracas (el servidor corre en UTC; sin
+  // timeZone explícita esto mostraba el día siguiente al pasar medianoche UTC).
   const todayLabel = new Date().toLocaleDateString('es-VE', {
     weekday: 'long', day: 'numeric', month: 'long',
+    timeZone: 'America/Caracas',
   });
 
   return (

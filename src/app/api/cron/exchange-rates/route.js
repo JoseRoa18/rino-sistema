@@ -15,6 +15,7 @@ import { NextResponse } from 'next/server';
 import { fetchAllRates } from '@/lib/exchange-rates';
 import { createServiceClient } from '@/lib/supabase/server';
 import { revalidateTag } from 'next/cache';
+import { todayStr } from '@/lib/dates';
 
 export const dynamic = 'force-dynamic';
 
@@ -35,7 +36,7 @@ async function handler(request) {
   }
 
   const supabase = createServiceClient();
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayStr();
 
   const { data, error } = await supabase
     .from('exchange_rates')

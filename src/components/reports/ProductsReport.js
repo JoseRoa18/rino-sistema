@@ -12,6 +12,7 @@ import ReportToolbar from './ReportToolbar';
 import MigrationErrorBanner from './MigrationErrorBanner';
 import { formatMoney } from '@/lib/pricing';
 import { fmt } from '@/lib/export';
+import { todayStr, normalizeSpaces } from '@/lib/dates';
 
 const TABS = [
   { value: 'top',         label: 'Top vendidos',  icon: Trophy },
@@ -444,14 +445,14 @@ function MarginBadge({ value }) {
 }
 
 function buildExports({ slug, title, rows, columns }) {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayStr();
   const filename = `${slug}-${today}`;
   return {
     csv: { filename, columns, rows },
     pdf: {
       filename,
       title,
-      subtitle: `Generado el ${new Date().toLocaleDateString('es-VE')}`,
+      subtitle: `Generado el ${normalizeSpaces(new Date().toLocaleDateString('es-VE', { timeZone: 'America/Caracas' }))}`,
       meta: [['Filas', rows.length]],
       tables: [{ columns, rows }],
       orientation: columns.length > 5 ? 'landscape' : 'portrait',

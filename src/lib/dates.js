@@ -27,6 +27,18 @@ export function todayStr() {
   return toDateStr(veNow());
 }
 
+/**
+ * Dado un timestamp (Date, ISO string, ...), devuelve la fecha
+ * correspondiente en zona Caracas como 'yyyy-mm-dd'. Útil para agrupar
+ * por día respetando la zona del negocio.
+ */
+export function veDateStr(input) {
+  const d = input instanceof Date ? input : new Date(input);
+  // en-CA produce YYYY-MM-DD; timeZone garantiza Caracas independiente
+  // del entorno (Node UTC o browser local).
+  return d.toLocaleDateString('en-CA', { timeZone: TZ });
+}
+
 /** Ayer */
 export function yesterdayStr() {
   const d = veNow();

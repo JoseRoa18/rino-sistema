@@ -13,6 +13,7 @@ export default function TopBar({ rate, onMenuClick }) {
     year: 'numeric',
     month: 'long',
     day: 'numeric',
+    timeZone: 'America/Caracas',
   });
 
   return (

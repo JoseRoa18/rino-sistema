@@ -12,7 +12,7 @@ import {
   ResponsiveContainer, PieChart, Pie, Cell,
 } from 'recharts';
 import { formatMoney } from '@/lib/pricing';
-import { formatShortDateTime } from '@/lib/dates';
+import { formatShortDateTime, veDateStr, normalizeSpaces } from '@/lib/dates';
 import KPICard from './KPICard';
 import SaleDetailModal from './SaleDetailModal';
 import PageHeader from './PageHeader';
@@ -281,17 +281,23 @@ function AnalyticsSection({ sales }) {
 
     const dailyMap = new Map();
     for (let i = 6; i >= 0; i--) {
-      const d = new Date();
-      d.setDate(d.getDate() - i);
-      const key = d.toISOString().slice(0, 10);
+      // Construir cada día en zona Caracas usando "mediodía VE" para evitar
+      // que la fecha brinque por la zona horaria.
+      const ref = new Date();
+      ref.setDate(ref.getDate() - i);
+      const key = veDateStr(ref);
       dailyMap.set(key, {
         dateKey: key,
-        label: d.toLocaleDateString('es-VE', { weekday: 'short', day: '2-digit' }),
+        label: normalizeSpaces(
+          new Date(`${key}T12:00:00-04:00`).toLocaleDateString('es-VE', {
+            weekday: 'short', day: '2-digit', timeZone: 'America/Caracas',
+          })
+        ),
         total: 0, count: 0,
       });
     }
     for (const s of completadas) {
-      const key = new Date(s.created_at).toISOString().slice(0, 10);
+      const key = veDateStr(s.created_at);
       if (dailyMap.has(key)) {
         const e = dailyMap.get(key);
         e.total += Number(s.total_usd) || 0;
