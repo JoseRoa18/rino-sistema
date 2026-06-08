@@ -231,6 +231,7 @@ export default function SuppliersClient({ initialSuppliers, initialKpis, role })
                   const lastPurchase = s.last_purchase_at
                     ? new Date(s.last_purchase_at).toLocaleDateString('es-VE', {
                         day: '2-digit', month: 'short', year: 'numeric',
+                        timeZone: 'America/Caracas',
                       })
                     : '—';
                   const hasOverdue = Number(s.overdue_balance_usd) > 0;

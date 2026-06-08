@@ -167,22 +167,26 @@ export function normalizeSpaces(s) {
 
 /**
  * Formato corto de fecha + hora ('27/05/26, 11:45 a. m.') con espacios
- * normalizados para evitar mismatch de hidratación.
+ * normalizados para evitar mismatch de hidratación. Siempre en zona Caracas.
  */
 export function formatShortDateTime(input) {
   if (!input) return '';
   return normalizeSpaces(
-    new Date(input).toLocaleString('es-VE', { dateStyle: 'short', timeStyle: 'short' })
+    new Date(input).toLocaleString('es-VE', {
+      dateStyle: 'short', timeStyle: 'short', timeZone: TZ,
+    })
   );
 }
 
 /**
  * Formato largo de fecha + hora ('27 de mayo de 2026, 11:45 a. m.') con
- * espacios normalizados.
+ * espacios normalizados. Siempre en zona Caracas.
  */
 export function formatLongDateTime(input) {
   if (!input) return '';
   return normalizeSpaces(
-    new Date(input).toLocaleString('es-VE', { dateStyle: 'long', timeStyle: 'short' })
+    new Date(input).toLocaleString('es-VE', {
+      dateStyle: 'long', timeStyle: 'short', timeZone: TZ,
+    })
   );
 }

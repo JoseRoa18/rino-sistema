@@ -48,6 +48,7 @@ function fmtDate(d) {
   if (!d) return '—';
   return new Date(d).toLocaleDateString('es-VE', {
     day: '2-digit', month: 'short', year: 'numeric',
+    timeZone: 'America/Caracas',
   });
 }
 
@@ -56,11 +57,15 @@ function fmtDateTime(d) {
   return new Date(d).toLocaleString('es-VE', {
     day: '2-digit', month: 'short', year: 'numeric',
     hour: '2-digit', minute: '2-digit',
-  });
+    timeZone: 'America/Caracas',
+  }).replace(/[   ]/g, ' ');
 }
 
 function fmtMonthLabel(d) {
-  return new Date(d).toLocaleDateString('es-VE', { month: 'short', year: '2-digit' });
+  return new Date(d).toLocaleDateString('es-VE', {
+    month: 'short', year: '2-digit',
+    timeZone: 'America/Caracas',
+  });
 }
 
 // ---------------------------------------------------------------------------

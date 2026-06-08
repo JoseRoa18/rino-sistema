@@ -12,6 +12,7 @@ import { formatMoney } from '@/lib/pricing';
 import { createClient } from '@/lib/supabase/server';
 import { getCurrentProfile } from '@/lib/auth';
 import { ensureFreshRates } from '../tasas/actions';
+import { nDaysAgoStr, rangeToIso } from '@/lib/dates';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,8 +21,9 @@ export default async function DashboardPage() {
 
   ensureFreshRates(60).catch(() => {});
 
-  // Cuota fija para "últimos 30 días" — usado por payment data
-  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  // "últimos 30 días" — anclado a inicio del día hace 29 días en zona Caracas
+  // para que coincida con la lógica de las vistas SQL (que usan ve_today()).
+  const { fromIso: thirtyDaysAgo } = rangeToIso({ from: nDaysAgoStr(29), to: nDaysAgoStr(29) });
 
   const [
     profile,

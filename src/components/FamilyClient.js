@@ -22,6 +22,7 @@ function fmtDate(d) {
   if (!d) return '—';
   return new Date(d).toLocaleDateString('es-VE', {
     day: '2-digit', month: 'short', year: 'numeric',
+    timeZone: 'America/Caracas',
   });
 }
 
@@ -30,7 +31,8 @@ function fmtDateTime(d) {
   return new Date(d).toLocaleString('es-VE', {
     day: '2-digit', month: 'short', year: 'numeric',
     hour: '2-digit', minute: '2-digit',
-  });
+    timeZone: 'America/Caracas',
+  }).replace(/[   ]/g, ' ');
 }
 
 export default function FamilyClient({
@@ -45,8 +47,9 @@ export default function FamilyClient({
   const chartData = useMemo(() => {
     const sorted = [...daily].sort((a, b) => new Date(a.day) - new Date(b.day));
     return sorted.slice(-30).map((d) => ({
-      day: new Date(`${d.day}T12:00:00`).toLocaleDateString('es-VE', {
+      day: new Date(`${d.day}T12:00:00-04:00`).toLocaleDateString('es-VE', {
         day: '2-digit', month: 'short',
+        timeZone: 'America/Caracas',
       }),
       cost: Number(d.cost_usd || 0),
     }));

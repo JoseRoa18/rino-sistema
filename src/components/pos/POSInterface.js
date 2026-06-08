@@ -442,6 +442,25 @@ export default function POSInterface({
   function addToCart(product, variant = null) {
     if (product.stock <= 0) return;
     const key = `${product.id}|${variant?.id || ''}`;
+    const baseQty = variant ? Number(variant.base_quantity) || 1 : 1;
+
+    // Stock total reservado en el carrito para ESTE product.id (a través de
+    // todas sus presentaciones), expresado en unidades base.
+    const reservedBase = cart.reduce((acc, it) => {
+      if (it.product.id !== product.id) return acc;
+      const m = it.variant ? Number(it.variant.base_quantity) || 1 : 1;
+      return acc + Number(it.qty) * m;
+    }, 0);
+    const availableBase = Number(product.stock) - reservedBase;
+
+    if (availableBase < baseQty) {
+      const unit = variant ? variant.name : (product.unit || 'unidad');
+      setError(
+        `No hay suficiente stock de ${product.name}. Disponible: ${Math.max(0, Math.floor(availableBase / baseQty))} ${unit}.`
+      );
+      return;
+    }
+
     setCart((prev) => {
       const existing = prev.find((it) => lineKeyOf(it) === key);
       if (existing) {
@@ -551,25 +570,52 @@ export default function POSInterface({
       setShowParkedModal(false);
       return;
     }
-    const restoredCart = parked.items.map((it) => ({
-      product: {
-        id: it.productId,
-        name: it.productName,
-        sku: it.sku,
-        price_usd: it.priceUsd,
-        price_ves: it.priceVes,
-        price_cop: it.priceCop,
-        stock: it.stock,
-        unit: it.unit,
-        min_stock: it.minStock,
-        category_id: it.categoryId,
-        active: it.active,
-        cost_avg: it.costAvg,
-        variants: it.variants,
-      },
-      variant: it.variant || null,
-      qty: it.qty,
-    }));
+    // Para evitar vender en negativo si el stock cambió mientras estaba
+    // parqueado, releemos el stock ACTUAL del array `products`.
+    const restoredCart = parked.items.map((it) => {
+      const liveProduct = products.find((p) => p.id === it.productId);
+      return {
+        product: {
+          id: it.productId,
+          name: it.productName,
+          sku: it.sku,
+          price_usd: it.priceUsd,
+          price_ves: it.priceVes,
+          price_cop: it.priceCop,
+          stock: liveProduct ? Number(liveProduct.stock) : it.stock,
+          unit: it.unit,
+          min_stock: it.minStock,
+          category_id: it.categoryId,
+          active: it.active,
+          cost_avg: it.costAvg,
+          variants: liveProduct?.variants || it.variants,
+        },
+        variant: it.variant || null,
+        qty: it.qty,
+      };
+    });
+
+    // Validar que el carrito reconstruido no exceda el stock actual.
+    const reservedByProduct = new Map();
+    for (const it of restoredCart) {
+      const m = it.variant ? Number(it.variant.base_quantity) || 1 : 1;
+      const reserved = (reservedByProduct.get(it.product.id) || 0) + Number(it.qty) * m;
+      reservedByProduct.set(it.product.id, reserved);
+    }
+    const insufficient = [];
+    for (const [pid, reserved] of reservedByProduct.entries()) {
+      const live = products.find((p) => p.id === pid);
+      const stock = live ? Number(live.stock) : 0;
+      if (stock < reserved) insufficient.push(live?.name || pid);
+    }
+    if (insufficient.length > 0) {
+      setError(
+        `Stock insuficiente para recuperar la venta. Productos afectados: ${insufficient.join(', ')}.`
+      );
+      setShowParkedModal(false);
+      return;
+    }
+
     setCart(restoredCart);
     setCustomerId(parked.customerId || '');
     setNote(parked.note || '');
@@ -2136,7 +2182,9 @@ function SuccessModal({ success, onClose }) {
               <p className="font-semibold text-slate-900 dark:text-slate-100">
                 {paidCurrency === 'COP'
                   ? Number(paidAmount).toLocaleString('es-CO', { maximumFractionDigits: 0 })
-                  : Number(paidAmount).toFixed(paidCurrency === 'USD' ? 2 : 0)}{' '}
+                  : paidCurrency === 'VES'
+                    ? Number(paidAmount).toLocaleString('es-VE', { maximumFractionDigits: 2 })
+                    : Number(paidAmount).toFixed(2)}{' '}
                 {paidCurrency}
               </p>
             </div>

@@ -24,6 +24,7 @@ function fmtDate(d) {
   if (!d) return '—';
   return new Date(d).toLocaleDateString('es-VE', {
     day: '2-digit', month: 'short', year: 'numeric',
+    timeZone: 'America/Caracas',
   });
 }
 

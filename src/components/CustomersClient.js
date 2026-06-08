@@ -242,6 +242,7 @@ export default function CustomersClient({ initialCustomers, initialKpis, role })
                   const lastSale = c.last_sale_at
                     ? new Date(c.last_sale_at).toLocaleDateString('es-VE', {
                         day: '2-digit', month: 'short', year: 'numeric',
+                        timeZone: 'America/Caracas',
                       })
                     : '—';
                   const hasOverdue = Number(c.overdue_balance_usd) > 0;

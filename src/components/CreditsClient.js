@@ -301,7 +301,7 @@ export default function CreditsClient({ initialCredits, rate, role }) {
                         {c.sales?.invoice_number ? `#${String(c.sales.invoice_number).padStart(6, '0')}` : '—'}
                       </td>
                       <td className="whitespace-nowrap px-4 py-3 text-sm text-slate-600 dark:text-slate-400">
-                        {new Date(c.created_at).toLocaleDateString('es-VE', { day: '2-digit', month: 'short', year: '2-digit' })}
+                        {new Date(c.created_at).toLocaleDateString('es-VE', { day: '2-digit', month: 'short', year: '2-digit', timeZone: 'America/Caracas' })}
                       </td>
                       <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums text-sm text-slate-600 dark:text-slate-400">
                         {formatMoney(c.original_amount_usd)}
@@ -323,7 +323,7 @@ export default function CreditsClient({ initialCredits, rate, role }) {
                             : isDueSoon ? 'font-semibold text-amber-600 dark:text-amber-400'
                             : 'text-slate-600 dark:text-slate-400'
                           }>
-                            {new Date(c.due_date).toLocaleDateString('es-VE', { day: '2-digit', month: 'short' })}
+                            {new Date(`${c.due_date}T12:00:00-04:00`).toLocaleDateString('es-VE', { day: '2-digit', month: 'short', timeZone: 'America/Caracas' })}
                             {isOverdue && (
                               <span className="ml-1 text-[11px]">
                                 · vencido {Math.abs(days)}d
@@ -335,7 +335,7 @@ export default function CreditsClient({ initialCredits, rate, role }) {
                           </span>
                         ) : (
                           <span className="text-slate-500 dark:text-slate-400">
-                            {new Date(c.due_date).toLocaleDateString('es-VE', { day: '2-digit', month: 'short' })}
+                            {new Date(`${c.due_date}T12:00:00-04:00`).toLocaleDateString('es-VE', { day: '2-digit', month: 'short', timeZone: 'America/Caracas' })}
                           </span>
                         )}
                       </td>

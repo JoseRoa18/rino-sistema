@@ -22,6 +22,7 @@ function formatDate(value) {
   if (!value) return '—';
   return new Date(value).toLocaleDateString('es-VE', {
     day: '2-digit', month: '2-digit', year: 'numeric',
+    timeZone: 'America/Caracas',
   });
 }
 
@@ -30,7 +31,8 @@ function formatDateTime(value) {
   return new Date(value).toLocaleString('es-VE', {
     day: '2-digit', month: '2-digit', year: 'numeric',
     hour: '2-digit', minute: '2-digit',
-  });
+    timeZone: 'America/Caracas',
+  }).replace(/[   ]/g, ' ');
 }
 
 function formatQty(qty, unit) {
