@@ -7,6 +7,7 @@ import {
   Home, AlertCircle, Percent,
 } from 'lucide-react';
 import { formatMoney } from '@/lib/pricing';
+import { normalizeSpaces } from '@/lib/dates';
 import {
   getDailySummaryAction,
   closeDayAction,
@@ -78,9 +79,12 @@ export default function DayCloseDialog({
     window.print();
   }
 
-  const formattedDate = new Date(`${date}T12:00:00`).toLocaleDateString('es-VE', {
-    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
-  });
+  const formattedDate = normalizeSpaces(
+    new Date(`${date}T12:00:00-04:00`).toLocaleDateString('es-VE', {
+      weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+      timeZone: 'America/Caracas',
+    })
+  );
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-0 print:relative print:inset-auto print:bg-transparent sm:items-center sm:p-4">
@@ -106,9 +110,10 @@ export default function DayCloseDialog({
               {isReadOnly && existingClose.profiles?.full_name && (
                 <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
                   Cerrado por <strong>{existingClose.profiles.full_name}</strong> ·{' '}
-                  {new Date(existingClose.closed_at).toLocaleString('es-VE', {
+                  {normalizeSpaces(new Date(existingClose.closed_at).toLocaleString('es-VE', {
                     day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
-                  })}
+                    timeZone: 'America/Caracas',
+                  }))}
                 </p>
               )}
             </div>

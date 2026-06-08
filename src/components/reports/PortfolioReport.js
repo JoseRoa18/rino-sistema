@@ -400,6 +400,7 @@ function AgingCard({ title, aging, accent }) {
 function CreditDetailTable({ title, credits, kind }) {
   if (credits.length === 0) return null;
   const isCustomer = kind === 'customer';
+  const today = todayStr();
   return (
     <div className="card overflow-hidden">
       <div className="border-b border-slate-200 px-4 py-3 dark:border-slate-700">
@@ -423,7 +424,10 @@ function CreditDetailTable({ title, credits, kind }) {
           </thead>
           <tbody className="divide-y divide-slate-100 bg-white dark:divide-slate-800 dark:bg-slate-900">
             {credits.map((c) => {
-              const overdue = c.due_date && new Date(c.due_date) < new Date();
+              // Comparación por string YYYY-MM-DD en hora Caracas (consistente
+              // con CreditsClient; evita que un crédito que vence "hoy" se
+              // marque como vencido durante el día).
+              const overdue = c.due_date && c.due_date < today;
               const age = daysOpen(c);
               const name = isCustomer ? c.customers?.name : c.suppliers?.name;
               const invoice = isCustomer

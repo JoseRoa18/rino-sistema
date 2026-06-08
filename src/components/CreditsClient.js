@@ -13,6 +13,7 @@ import KPICard from './KPICard';
 import PageHeader from './PageHeader';
 import EmptyState from './EmptyState';
 import CreditPaymentDialog from './CreditPaymentDialog';
+import { todayStr } from '@/lib/dates';
 
 const STATUS_OPTIONS = [
   { value: 'abierto',  label: 'Abiertos'  },
@@ -29,15 +30,18 @@ const PAYMENT_META = {
   credito:       { label: 'Crédito',       icon: Clock },
 };
 
-function todayISO() {
-  return new Date().toISOString().slice(0, 10);
-}
-
+/**
+ * Calcula días restantes hasta dueDate respetando zona Caracas.
+ * dueDate llega como 'YYYY-MM-DD' desde la BD (sin hora). Lo anclamos a
+ * mediodía UTC para evitar saltos de día por zona local del navegador.
+ */
 function daysUntil(dueDate) {
   if (!dueDate) return null;
-  const today = new Date(); today.setHours(0, 0, 0, 0);
-  const due = new Date(dueDate); due.setHours(0, 0, 0, 0);
-  return Math.floor((due - today) / (1000 * 60 * 60 * 24));
+  const todayKey = todayStr(); // ya viene en zona Caracas
+  // Diferencia en días entre dos 'YYYY-MM-DD' sin influencia de hora local
+  const a = new Date(`${todayKey}T12:00:00Z`);
+  const b = new Date(`${dueDate}T12:00:00Z`);
+  return Math.floor((b - a) / (1000 * 60 * 60 * 24));
 }
 
 export default function CreditsClient({ initialCredits, rate, role }) {
@@ -48,7 +52,7 @@ export default function CreditsClient({ initialCredits, rate, role }) {
   const [paying, setPaying] = useState(null);
   const [successMsg, setSuccessMsg] = useState('');
 
-  const today = todayISO();
+  const today = todayStr();
 
   // ---------- KPIs ----------
   const kpis = useMemo(() => {
@@ -60,13 +64,20 @@ export default function CreditsClient({ initialCredits, rate, role }) {
       return d !== null && d >= 0 && d <= 7;
     });
 
-    // Pagado este mes: créditos en estado 'pagado' que se actualizaron este mes.
-    // No tenemos updated_at en credits, así que usamos paid_amount_usd de los abiertos
-    // + originals de los pagados creados en los últimos 30 días como aproximación.
+    // "Cobrado (últimos 30 días)" — suma de lo realmente cobrado:
+    //   - paid_amount_usd de TODOS los créditos (abiertos+pagados) creados
+    //     en los últimos 30 días.
+    // Nota: paid_amount_usd refleja el total abonado al crédito a la fecha
+    // (no la fecha del pago). Es una aproximación porque credits no tiene
+    // tabla de pagos visible aquí; pero ya NO duplica original+paid como antes.
     const last30 = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-    const paidRecently = credits.filter(
-      (c) => c.status === 'pagado' && c.created_at >= last30
+    const recentlyCollected = credits.filter((c) => c.created_at >= last30);
+    const totalPaid30 = recentlyCollected.reduce(
+      (s, c) => s + Number(c.paid_amount_usd || 0), 0
     );
+    const paidCount30 = recentlyCollected.filter(
+      (c) => Number(c.paid_amount_usd || 0) > 0
+    ).length;
 
     return {
       totalOpen:       opens.reduce((s, c) => s + Number(c.balance_usd || 0), 0),
@@ -75,9 +86,8 @@ export default function CreditsClient({ initialCredits, rate, role }) {
       countOverdue:    overdue.length,
       totalDueWeek:    dueWeek.reduce((s, c) => s + Number(c.balance_usd || 0), 0),
       countDueWeek:    dueWeek.length,
-      totalPaidMonth:  paidRecently.reduce((s, c) => s + Number(c.original_amount_usd || 0), 0)
-                       + opens.reduce((s, c) => s + Number(c.paid_amount_usd || 0), 0),
-      countPaidMonth:  paidRecently.length,
+      totalPaidMonth:  totalPaid30,
+      countPaidMonth:  paidCount30,
     };
   }, [credits, today]);
 

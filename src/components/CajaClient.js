@@ -111,12 +111,15 @@ export default function CajaClient({
     return r;
   }, [filteredSales]);
 
-  const dateLabel = new Date(`${date}T12:00:00-04:00`).toLocaleDateString('es-VE', {
-    weekday: 'long',
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  });
+  const dateLabel = normalizeSpaces(
+    new Date(`${date}T12:00:00-04:00`).toLocaleDateString('es-VE', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      timeZone: 'America/Caracas',
+    })
+  );
 
   function handlePrint() {
     window.print();
