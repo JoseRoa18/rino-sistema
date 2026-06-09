@@ -6,7 +6,7 @@ import {
   Banknote, Smartphone, ArrowLeftRight, CreditCard, Clock,
   Package, AlertCircle, Wallet, AlertTriangle, ChevronDown,
   Pause, FileText, Percent, ScanLine, User as UserIcon,
-  ListChecks, Lock,
+  ListChecks, Lock, UserPlus,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { formatMoney, convertFromUsd, copToVes } from '@/lib/pricing';
@@ -1281,6 +1281,15 @@ function CartPanel({
         </div>
 
         <div className="flex items-center gap-2">
+          <button
+            onClick={onNewCustomer}
+            title="Crear nuevo cliente"
+            aria-label="Crear nuevo cliente"
+            className="flex h-8 items-center gap-1.5 rounded-md border border-brand-200 bg-brand-50 px-2.5 text-xs font-medium text-brand-700 transition hover:border-brand-300 hover:bg-brand-100 dark:border-brand-500/30 dark:bg-brand-500/10 dark:text-brand-400 dark:hover:bg-brand-500/15"
+          >
+            <UserPlus className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Nuevo cliente</span>
+          </button>
           <CustomerPill
             customer={customer}
             customers={customers}
