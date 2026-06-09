@@ -4,9 +4,9 @@ import SalesClient from '@/components/SalesClient';
 
 export const dynamic = 'force-dynamic';
 
-// Tamaños de página permitidos (sincronizados con el selector del cliente).
-const ALLOWED_PER_PAGE = [10, 20, 50, 100, 200, 500];
-const DEFAULT_PER_PAGE = 20;
+// Cuántas ventas cargar del servidor (afecta KPIs, stats y gráficos)
+const ALLOWED_FETCH = [20, 50, 100, 200];
+const DEFAULT_FETCH = 50;
 
 export default async function VentasPage({ searchParams }) {
   const supabase = createClient();
@@ -18,17 +18,14 @@ export default async function VentasPage({ searchParams }) {
 
   const role = profile?.role || 'cajero';
 
-  // Sanitizar parámetros de paginación
-  const requestedPerPage = Number(searchParams?.perPage) || DEFAULT_PER_PAGE;
-  const perPage = ALLOWED_PER_PAGE.includes(requestedPerPage)
-    ? requestedPerPage
-    : DEFAULT_PER_PAGE;
+  // Sanitizar tamaño del dataset
+  const requestedFetch = Number(searchParams?.fetch) || DEFAULT_FETCH;
+  const fetchSize = ALLOWED_FETCH.includes(requestedFetch)
+    ? requestedFetch
+    : DEFAULT_FETCH;
 
-  const requestedPage = Math.max(1, Number(searchParams?.page) || 1);
-  const from = (requestedPage - 1) * perPage;
-  const to = from + perPage - 1;
-
-  // Query base — cajero solo ve las suyas
+  // Query — cajero solo ve las suyas. Pedimos count para mostrar totales reales
+  // pero solo cargamos `fetchSize` registros para los KPIs y la tabla.
   let query = supabase
     .from('sales')
     .select(`
@@ -38,7 +35,7 @@ export default async function VentasPage({ searchParams }) {
       customers ( name )
     `, { count: 'exact' })
     .order('created_at', { ascending: false })
-    .range(from, to);
+    .limit(fetchSize);
 
   if (role === 'cajero') {
     query = query.eq('cashier_id', user.id);
@@ -46,22 +43,13 @@ export default async function VentasPage({ searchParams }) {
 
   const { data: sales, count } = await query;
 
-  const totalCount = count || 0;
-  const totalPages = Math.max(1, Math.ceil(totalCount / perPage));
-  // Si el usuario pidió una página fuera de rango, reflejamos la última real
-  const currentPage = Math.min(requestedPage, totalPages);
-
   return (
     <SalesClient
       initialSales={sales || []}
       role={role}
-      pagination={{
-        page: currentPage,
-        perPage,
-        totalCount,
-        totalPages,
-        allowedPerPage: ALLOWED_PER_PAGE,
-      }}
+      fetchSize={fetchSize}
+      allowedFetch={ALLOWED_FETCH}
+      totalCount={count || 0}
     />
   );
 }
