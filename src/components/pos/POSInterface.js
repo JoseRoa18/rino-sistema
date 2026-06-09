@@ -1257,6 +1257,58 @@ function IconButton({ children, onClick, title, disabled, danger }) {
 }
 
 // =========================================================================
+// QtyInput — input controlado con draft local para que borrar el contenido
+// NO elimine el producto del carrito. El producto solo se quita con el botón
+// papelera. Hacer blur con valor inválido revierte al qty actual.
+// =========================================================================
+function QtyInput({ value, onCommit, step, className, ariaLabel }) {
+  const [draft, setDraft] = useState(String(value));
+
+  // Sincronizar draft cuando el qty cambia desde fuera (botones +/−).
+  useEffect(() => {
+    setDraft(String(value));
+  }, [value]);
+
+  function commit() {
+    const trimmed = String(draft).trim();
+    if (trimmed === '') {
+      setDraft(String(value)); // revertir si quedó vacío
+      return;
+    }
+    const n = Number(trimmed.replace(',', '.'));
+    if (!Number.isFinite(n) || n <= 0) {
+      setDraft(String(value)); // revertir si es inválido o <= 0
+      return;
+    }
+    onCommit(n);
+  }
+
+  return (
+    <input
+      type="number"
+      step={step}
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          e.currentTarget.blur();
+        }
+        if (e.key === 'Escape') {
+          setDraft(String(value));
+          e.currentTarget.blur();
+        }
+      }}
+      onFocus={(e) => e.currentTarget.select()}
+      className={className}
+      min="0"
+      aria-label={ariaLabel}
+    />
+  );
+}
+
+// =========================================================================
 // CartPanel
 // =========================================================================
 function CartPanel({
@@ -1377,13 +1429,12 @@ function CartPanel({
                           aria-label="Restar">
                           <Minus className="h-3 w-3" />
                         </button>
-                        <input
-                          type="number"
-                          step={lineStep}
+                        <QtyInput
                           value={it.qty}
-                          onChange={(e) => onSetQty(key, e.target.value)}
+                          onCommit={(n) => onSetQty(key, n)}
+                          step={lineStep}
+                          ariaLabel={`Cantidad de ${it.product.name}`}
                           className={`h-7 ${lineFractional ? 'w-16' : 'w-12'} rounded-md border border-slate-200 bg-white text-center text-xs font-semibold text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100`}
-                          min="0"
                         />
                         <button onClick={() => onChangeQty(key, 1)}
                           className="flex h-7 w-7 items-center justify-center rounded-md border border-slate-200 hover:bg-slate-50 active:scale-95 dark:border-slate-700 dark:hover:bg-slate-800"
