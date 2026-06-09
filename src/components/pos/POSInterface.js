@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, useRef } from 'react';
 import {
   Search, Plus, Minus, Trash2, ShoppingCart, X, CheckCircle2,
-  Banknote, Smartphone, ArrowLeftRight, CreditCard, Clock,
+  Banknote, Smartphone, CreditCard, Clock,
   Package, AlertCircle, Wallet, AlertTriangle, ChevronDown,
   Pause, FileText, Percent, ScanLine, User as UserIcon,
   ListChecks, Lock, UserPlus,
@@ -14,11 +14,10 @@ import CustomerForm from '../CustomerForm';
 import { createCustomerAction } from '@/app/(dashboard)/clientes/actions';
 
 const PAYMENT_METHODS = [
-  { value: 'efectivo',      label: 'Efectivo',     icon: Banknote },
-  { value: 'pago_movil',    label: 'Pago móvil',   icon: Smartphone },
-  { value: 'transferencia', label: 'Transferencia', icon: ArrowLeftRight },
-  { value: 'tarjeta',       label: 'Tarjeta',      icon: CreditCard },
-  { value: 'credito',       label: 'Crédito',      icon: Clock },
+  { value: 'efectivo',   label: 'Efectivo',   icon: Banknote },
+  { value: 'pago_movil', label: 'Pago móvil', icon: Smartphone },
+  { value: 'tarjeta',    label: 'Tarjeta',    icon: CreditCard },
+  { value: 'credito',    label: 'Crédito',    icon: Clock },
 ];
 
 const CURRENCIES = [

@@ -2,17 +2,16 @@
 
 import { useState, useMemo, useEffect } from 'react';
 import {
-  X, Banknote, Smartphone, ArrowLeftRight, CreditCard,
+  X, Banknote, Smartphone, CreditCard,
   Check, AlertTriangle, ArrowRight, DollarSign,
 } from 'lucide-react';
 import { formatMoney, convertFromUsd, convertToUsd } from '@/lib/pricing';
 import { registerCreditPaymentAction } from '@/app/(dashboard)/clientes/actions';
 
 const PAYMENT_METHODS = [
-  { value: 'efectivo',      label: 'Efectivo',      icon: Banknote     },
-  { value: 'pago_movil',    label: 'Pago móvil',    icon: Smartphone   },
-  { value: 'transferencia', label: 'Transferencia', icon: ArrowLeftRight },
-  { value: 'tarjeta',       label: 'Tarjeta',       icon: CreditCard   },
+  { value: 'efectivo',   label: 'Efectivo',   icon: Banknote   },
+  { value: 'pago_movil', label: 'Pago móvil', icon: Smartphone },
+  { value: 'tarjeta',    label: 'Tarjeta',    icon: CreditCard },
 ];
 
 const CURRENCIES = [
