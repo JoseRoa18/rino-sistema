@@ -17,18 +17,32 @@ export default async function InventarioPage({ searchParams }) {
 
   const supabase = createClient();
 
-  const [forecastRes, categories, suppliersRes] = await Promise.all([
+  const [forecastRes, categories, suppliersRes, expiryRes] = await Promise.all([
     supabase.from('v_inventory_forecast').select('*').order('name'),
     getCachedCategories(),
     supabase.from('suppliers').select('id, name').eq('active', true).order('name'),
+    // Productos con tracking de vencimiento y su próximo lote por vencer
+    supabase.from('v_products_expiry_status').select('*'),
   ]);
+
+  // Indexar estado de vencimiento por product_id para que InventoryClient
+  // pueda mostrar el badge sin consultar otra vez. Si la migración 019 no
+  // está aplicada, la query falla y simplemente no hay badge.
+  const expiryByProduct = new Map();
+  if (!expiryRes.error && Array.isArray(expiryRes.data)) {
+    for (const e of expiryRes.data) expiryByProduct.set(e.product_id, e);
+  }
+  const itemsWithExpiry = (forecastRes.data || []).map((it) => ({
+    ...it,
+    expiry: expiryByProduct.get(it.product_id) || null,
+  }));
 
   const requestedStatus = searchParams?.status;
   const initialStatus = VALID_STATUS.has(requestedStatus) ? requestedStatus : 'all';
 
   return (
     <InventoryClient
-      initialItems={forecastRes.data || []}
+      initialItems={itemsWithExpiry}
       categories={categories || []}
       suppliers={suppliersRes.data || []}
       role={profile.role}

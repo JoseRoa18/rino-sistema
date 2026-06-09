@@ -74,12 +74,19 @@ export default function GlobalSearch() {
       return;
     }
 
+    // Cada palabra debe estar en name O sku. Llamar .or() varias veces los
+    // une con AND entre ellos: "queso gouda" encuentra "Queso Amarillo Gouda".
+    const tokens = safe.split(/\s+/).filter(Boolean);
+
     setLoading(true);
     const supabase = createClient();
-    const { data, error } = await supabase
+    let query = supabase
       .from('products')
-      .select('id, name, sku, stock, min_stock, price_usd, unit, active, categories(name)')
-      .or(`name.ilike.%${safe}%,sku.ilike.%${safe}%`)
+      .select('id, name, sku, stock, min_stock, price_usd, unit, active, categories(name)');
+    for (const t of tokens) {
+      query = query.or(`name.ilike.%${t}%,sku.ilike.%${t}%`);
+    }
+    const { data, error } = await query
       .order('active', { ascending: false })
       .order('name')
       .limit(8);

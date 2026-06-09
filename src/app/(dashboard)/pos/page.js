@@ -12,7 +12,7 @@ export default async function POSPage() {
   // Productos completos para búsqueda + más vendidos para acceso rápido.
   // Categorías y tasa vienen de cache (5-10 min) - casi instantáneo.
   // Productos y clientes son frescos cada vez (stock cambia).
-  const [productsRes, variantsRes, bestSellersRes, categories, rate, customersRes] = await Promise.all([
+  const [productsRes, variantsRes, expiryRes, bestSellersRes, categories, rate, customersRes] = await Promise.all([
     supabase.from('products').select('*').eq('active', true).order('name'),
     // Variants en query separada para que un fallo (tabla no creada aún) no
     // tumbe la carga de productos.
@@ -21,6 +21,8 @@ export default async function POSPage() {
       .select('id, product_id, name, base_quantity, price_usd, price_cop, price_ves, sort_order, active')
       .eq('active', true)
       .order('sort_order'),
+    // Estado de vencimiento por producto (vacío si la migración 019 no existe).
+    supabase.from('v_products_expiry_status').select('product_id, next_expires_at, batches_expired, batches_critical, batches_warning'),
     supabase.from('v_top_sold_products').select('*'),
     getCachedCategories(),
     getCachedLatestRate(),
@@ -31,7 +33,6 @@ export default async function POSPage() {
       .order('name'),
   ]);
 
-  // Mapear variants por product_id (vacío si la tabla aún no existe)
   const variantsByProduct = new Map();
   if (!variantsRes.error && Array.isArray(variantsRes.data)) {
     for (const v of variantsRes.data) {
@@ -40,9 +41,15 @@ export default async function POSPage() {
     }
   }
 
+  const expiryByProduct = new Map();
+  if (!expiryRes.error && Array.isArray(expiryRes.data)) {
+    for (const e of expiryRes.data) expiryByProduct.set(e.product_id, e);
+  }
+
   const products = (productsRes.data || []).map((p) => ({
     ...p,
     variants: variantsByProduct.get(p.id) || [],
+    expiry: expiryByProduct.get(p.id) || null,
   }));
 
   return (

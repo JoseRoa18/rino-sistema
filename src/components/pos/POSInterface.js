@@ -146,15 +146,21 @@ export default function POSInterface({
   }, [bestSellers]);
 
   const visibleProducts = useMemo(() => {
-    const q = trimmedSearch.toLowerCase();
-    const matchesQuery = (p) =>
-      !q || p.name.toLowerCase().includes(q) || (p.sku || '').toLowerCase().includes(q);
+    // Búsqueda por palabras: cada token debe aparecer en el nombre o SKU,
+    // sin importar el orden. "queso gouda" matchea "Queso Amarillo Gouda"
+    // porque ambas palabras están presentes.
+    const tokens = trimmedSearch.toLowerCase().split(/\s+/).filter(Boolean);
+    const matchesQuery = (p) => {
+      if (tokens.length === 0) return true;
+      const haystack = `${p.name} ${p.sku || ''}`.toLowerCase();
+      return tokens.every((t) => haystack.includes(t));
+    };
     const matchesCategory = (p) =>
       activeCategory === 'all' || p.category_id === activeCategory;
 
     const baseActive = products.filter((p) => p.active !== false);
 
-    if (q) return baseActive.filter(matchesQuery).filter(matchesCategory).slice(0, 60);
+    if (tokens.length > 0) return baseActive.filter(matchesQuery).filter(matchesCategory).slice(0, 60);
     if (activeCategory !== 'all') return baseActive.filter(matchesCategory).slice(0, 60);
 
     const ranked = bestSellers
@@ -1167,6 +1173,29 @@ function ProductCard({ product: p, variant, rank, catName, rates, onAdd, familyM
           ? `${variant.base_quantity} ${p.unit || 'u'} base`
           : `SKU | ${p.sku || catName(p.category_id)}`}
       </span>
+      {/* Badge de vencimiento: solo si el producto rastrea expiración y tiene
+          algún lote vencido / por vencer */}
+      {p.expiry && p.expiry.next_expires_at && (() => {
+        const expired = Number(p.expiry.batches_expired || 0);
+        const critical = Number(p.expiry.batches_critical || 0);
+        const warning = Number(p.expiry.batches_warning || 0);
+        if (expired === 0 && critical === 0 && warning === 0) return null;
+        const cls = expired > 0
+          ? 'bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-400'
+          : critical > 0
+            ? 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400'
+            : 'bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-400';
+        const label = expired > 0
+          ? `⚠ ${expired} vencido${expired > 1 ? 's' : ''}`
+          : critical > 0
+            ? `⏰ vence ${p.expiry.next_expires_at}`
+            : `📅 vence ${p.expiry.next_expires_at}`;
+        return (
+          <span className={`mt-1 inline-flex w-fit items-center gap-1 rounded-full px-1.5 py-0.5 text-[9px] font-medium ${cls}`}>
+            {label}
+          </span>
+        );
+      })()}
 
       <div className="mt-auto space-y-0.5 pt-2">
         <div className={`flex items-baseline gap-1.5 ${

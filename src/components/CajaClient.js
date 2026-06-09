@@ -38,7 +38,7 @@ const BAR_COLORS = {
 };
 
 export default function CajaClient({
-  initialSales, role, cashiers, date, todayStr, rate,
+  initialSales, initialSaleItems = [], role, cashiers, date, todayStr, rate,
   dailyClose: initialDailyClose,
 }) {
   const router = useRouter();
@@ -73,6 +73,30 @@ export default function CajaClient({
     }
     return result;
   }, [filteredSales]);
+
+  // Totales por categoría (Ingresos venta · Ingresos costo · Ganancia)
+  const byCategory = useMemo(() => {
+    const map = new Map();
+    for (const it of initialSaleItems) {
+      if (cashierFilter !== 'all' && it.cashier_id !== cashierFilter) continue;
+      const key = it.category_name || 'Sin categoría';
+      const entry = map.get(key) || {
+        category_name: key,
+        units_sold: 0, revenue_usd: 0, cogs_usd: 0, profit_usd: 0,
+      };
+      entry.units_sold  += Number(it.quantity) || 0;
+      entry.revenue_usd += Number(it.line_total_usd) || 0;
+      entry.cogs_usd    += Number(it.cost_total_usd) || 0;
+      entry.profit_usd  += (Number(it.line_total_usd) || 0) - (Number(it.cost_total_usd) || 0);
+      map.set(key, entry);
+    }
+    return Array.from(map.values())
+      .map((r) => ({
+        ...r,
+        margin_pct: r.revenue_usd > 0 ? (r.profit_usd / r.revenue_usd) * 100 : 0,
+      }))
+      .sort((a, b) => b.revenue_usd - a.revenue_usd);
+  }, [initialSaleItems, cashierFilter]);
 
   // Totales por cajero (solo si no es cajero)
   const byCashier = useMemo(() => {
@@ -354,6 +378,83 @@ export default function CajaClient({
           </div>
         )}
       </div>
+
+      {/* Por categoría */}
+      {byCategory.length > 0 && (
+        <div className="card overflow-hidden">
+          <div className="border-b border-slate-200 p-4 dark:border-slate-700">
+            <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+              Por categoría
+            </h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Ingresos a precio venta, costo, ganancia y margen
+            </p>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-700">
+              <thead className="bg-slate-50 dark:bg-slate-800/50">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400">Categoría</th>
+                  <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400">Unidades</th>
+                  <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400">Precio venta</th>
+                  <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400">Precio costo</th>
+                  <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400">Ganancia</th>
+                  <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400">Margen</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 bg-white dark:divide-slate-800 dark:bg-slate-900">
+                {byCategory.map((c) => (
+                  <tr key={c.category_name}>
+                    <td className="px-4 py-3 text-sm text-slate-700 dark:text-slate-300">
+                      {c.category_name}
+                    </td>
+                    <td className="px-4 py-3 text-right tabular-nums text-sm text-slate-600 dark:text-slate-400">
+                      {Number(c.units_sold || 0).toLocaleString('es-VE', { maximumFractionDigits: 3 })}
+                    </td>
+                    <td className="px-4 py-3 text-right tabular-nums text-sm font-semibold text-slate-900 dark:text-slate-100">
+                      {formatMoney(c.revenue_usd)}
+                    </td>
+                    <td className="px-4 py-3 text-right tabular-nums text-sm text-slate-600 dark:text-slate-400">
+                      {formatMoney(c.cogs_usd)}
+                    </td>
+                    <td className="px-4 py-3 text-right tabular-nums text-sm font-semibold text-emerald-700 dark:text-emerald-400">
+                      {formatMoney(c.profit_usd)}
+                    </td>
+                    <td className="px-4 py-3 text-right tabular-nums text-sm text-slate-500 dark:text-slate-400">
+                      {Number(c.margin_pct || 0).toFixed(1)}%
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot className="bg-slate-50 dark:bg-slate-800/50">
+                <tr>
+                  <td className="px-4 py-3 text-sm font-bold text-slate-900 dark:text-slate-100">Total</td>
+                  <td className="px-4 py-3 text-right tabular-nums text-sm font-bold text-slate-900 dark:text-slate-100">
+                    {Number(byCategory.reduce((s, c) => s + Number(c.units_sold || 0), 0))
+                      .toLocaleString('es-VE', { maximumFractionDigits: 3 })}
+                  </td>
+                  <td className="px-4 py-3 text-right tabular-nums text-sm font-bold text-slate-900 dark:text-slate-100">
+                    {formatMoney(byCategory.reduce((s, c) => s + Number(c.revenue_usd || 0), 0))}
+                  </td>
+                  <td className="px-4 py-3 text-right tabular-nums text-sm font-bold text-slate-900 dark:text-slate-100">
+                    {formatMoney(byCategory.reduce((s, c) => s + Number(c.cogs_usd || 0), 0))}
+                  </td>
+                  <td className="px-4 py-3 text-right tabular-nums text-sm font-bold text-emerald-700 dark:text-emerald-400">
+                    {formatMoney(byCategory.reduce((s, c) => s + Number(c.profit_usd || 0), 0))}
+                  </td>
+                  <td className="px-4 py-3 text-right tabular-nums text-sm font-bold text-slate-900 dark:text-slate-100">
+                    {(() => {
+                      const rev = byCategory.reduce((s, c) => s + Number(c.revenue_usd || 0), 0);
+                      const prof = byCategory.reduce((s, c) => s + Number(c.profit_usd || 0), 0);
+                      return rev > 0 ? `${((prof / rev) * 100).toFixed(1)}%` : '—';
+                    })()}
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* Por cajero (solo admin/supervisor) */}
       {!isCajero && byCashier.length > 1 && cashierFilter === 'all' && (

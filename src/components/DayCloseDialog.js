@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import {
   X, Lock, AlertTriangle, CheckCircle2, Printer, Calendar,
   DollarSign, TrendingUp, ShoppingBag, CreditCard, Receipt,
-  Home, AlertCircle, Percent,
+  Home, AlertCircle, Percent, Layers,
 } from 'lucide-react';
 import { formatMoney } from '@/lib/pricing';
 import { normalizeSpaces } from '@/lib/dates';
@@ -261,6 +261,71 @@ export default function DayCloseDialog({
                         </tr>
                       ))}
                     </tbody>
+                  </table>
+                ) : (
+                  <p className="py-3 text-center text-xs text-slate-400">Sin ventas.</p>
+                )}
+              </Section>
+
+              {/* Por categoría */}
+              <Section title="Por categoría" icon={Layers}>
+                {Array.isArray(summary.by_category) && summary.by_category.length > 0 ? (
+                  <table className="min-w-full">
+                    <thead>
+                      <tr className="border-b border-slate-100 text-xs uppercase tracking-wider text-slate-500 dark:border-slate-800">
+                        <th className="px-2 py-1.5 text-left font-medium">Categoría</th>
+                        <th className="px-2 py-1.5 text-right font-medium">Unid.</th>
+                        <th className="px-2 py-1.5 text-right font-medium">P. venta</th>
+                        <th className="px-2 py-1.5 text-right font-medium">P. costo</th>
+                        <th className="px-2 py-1.5 text-right font-medium">Ganancia</th>
+                        <th className="px-2 py-1.5 text-right font-medium">Margen</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {summary.by_category.map((c, i) => (
+                        <tr key={i} className="text-sm">
+                          <td className="px-2 py-1.5 text-slate-700 dark:text-slate-300">
+                            {c.category_name}
+                          </td>
+                          <td className="px-2 py-1.5 text-right tabular-nums text-slate-600 dark:text-slate-400">
+                            {Number(c.units_sold || 0).toLocaleString('es-VE', { maximumFractionDigits: 3 })}
+                          </td>
+                          <td className="px-2 py-1.5 text-right tabular-nums font-medium text-slate-900 dark:text-slate-100">
+                            {formatMoney(c.revenue_usd)}
+                          </td>
+                          <td className="px-2 py-1.5 text-right tabular-nums text-slate-600 dark:text-slate-400">
+                            {formatMoney(c.cogs_usd)}
+                          </td>
+                          <td className="px-2 py-1.5 text-right tabular-nums font-medium text-emerald-700 dark:text-emerald-400">
+                            {formatMoney(c.profit_usd)}
+                          </td>
+                          <td className="px-2 py-1.5 text-right tabular-nums text-slate-500 dark:text-slate-400">
+                            {Number(c.margin_pct || 0).toFixed(1)}%
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr className="border-t border-slate-200 bg-slate-50/50 text-xs font-semibold dark:border-slate-700 dark:bg-slate-800/30">
+                        <td className="px-2 py-1.5 text-slate-700 dark:text-slate-300">Total</td>
+                        <td className="px-2 py-1.5 text-right tabular-nums text-slate-700 dark:text-slate-300">
+                          {Number(summary.by_category.reduce((s, c) => s + Number(c.units_sold || 0), 0))
+                            .toLocaleString('es-VE', { maximumFractionDigits: 3 })}
+                        </td>
+                        <td className="px-2 py-1.5 text-right tabular-nums text-slate-900 dark:text-slate-100">
+                          {formatMoney(summary.revenue_usd)}
+                        </td>
+                        <td className="px-2 py-1.5 text-right tabular-nums text-slate-700 dark:text-slate-300">
+                          {formatMoney(summary.cogs_usd)}
+                        </td>
+                        <td className="px-2 py-1.5 text-right tabular-nums text-emerald-700 dark:text-emerald-400">
+                          {formatMoney(summary.profit_usd)}
+                        </td>
+                        <td className="px-2 py-1.5 text-right tabular-nums text-slate-700 dark:text-slate-300">
+                          {Number(summary.margin_pct || 0).toFixed(1)}%
+                        </td>
+                      </tr>
+                    </tfoot>
                   </table>
                 ) : (
                   <p className="py-3 text-center text-xs text-slate-400">Sin ventas.</p>

@@ -57,13 +57,12 @@ export default function ProductsClient({ initialProducts, categories, role, curr
   const baseFiltered = useMemo(() => {
     let list = products;
     if (!showInactive) list = list.filter((p) => p.active !== false);
-    const q = search.trim().toLowerCase();
-    if (q) {
-      list = list.filter(
-        (p) =>
-          p.name.toLowerCase().includes(q) ||
-          (p.sku || '').toLowerCase().includes(q)
-      );
+    const tokens = search.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    if (tokens.length > 0) {
+      list = list.filter((p) => {
+        const haystack = `${p.name} ${p.sku || ''}`.toLowerCase();
+        return tokens.every((t) => haystack.includes(t));
+      });
     }
     return list;
   }, [products, search, showInactive]);

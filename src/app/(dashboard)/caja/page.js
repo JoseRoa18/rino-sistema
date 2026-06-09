@@ -49,6 +49,29 @@ export default async function CajaPage({ searchParams }) {
 
   const { data: sales } = await query;
 
+  // sale_items del día con cashier_id (para agrupar por categoría en cliente
+  // y reaccionar al filtro "Todos los cajeros" / cajero específico).
+  let saleItems = [];
+  const saleIdsRaw = (sales || []).map((s) => s.id);
+  if (saleIdsRaw.length > 0) {
+    const { data: items } = await supabase
+      .from('sale_items')
+      .select(`
+        sale_id, quantity, unit_cost_usd, line_total_usd,
+        sales:sale_id ( cashier_id ),
+        products:product_id ( category_id, categories ( name ) )
+      `)
+      .in('sale_id', saleIdsRaw);
+    saleItems = (items || []).map((it) => ({
+      sale_id:       it.sale_id,
+      cashier_id:    it.sales?.cashier_id || null,
+      category_name: it.products?.categories?.name || 'Sin categoría',
+      quantity:      Number(it.quantity) || 0,
+      line_total_usd: Number(it.line_total_usd) || 0,
+      cost_total_usd: (Number(it.unit_cost_usd) || 0) * (Number(it.quantity) || 0),
+    }));
+  }
+
   // Lista de cajeros disponibles (solo para admin/supervisor)
   let cashiers = [];
   if (role !== 'cajero') {
@@ -74,6 +97,7 @@ export default async function CajaPage({ searchParams }) {
   return (
     <CajaClient
       initialSales={sales || []}
+      initialSaleItems={saleItems}
       role={role}
       cashiers={cashiers}
       date={date}

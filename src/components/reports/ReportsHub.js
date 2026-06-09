@@ -5,7 +5,7 @@ import Link from 'next/link';
 import {
   BarChart3, Boxes, Package, CreditCard, ArrowRight, AlertTriangle,
   DollarSign, TrendingUp, ShoppingBag, Activity, Trophy, Users,
-  Truck, Clock, ExternalLink, Receipt,
+  Truck, Clock, ExternalLink, Receipt, Calendar as CalendarIcon,
 } from 'lucide-react';
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip,
@@ -180,6 +180,30 @@ export default function ReportsHub({
             stats={[
               { label: 'Por cobrar', value: formatMoney(customers.total_ar_balance) },
               { label: 'Por pagar',  value: formatMoney(suppliers.total_ap_balance) },
+            ]}
+          />
+        </div>
+
+        {/* Segunda fila: reportes operativos */}
+        <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <ReportCard
+            href="/reportes/vencimientos"
+            icon={CalendarIcon}
+            title="Vencimientos"
+            description="Lotes por vencer o vencidos. Útil para rotar perecederos antes de perder stock."
+            accent={
+              Number(sales?.expiring_batches_count) > 0 ? 'rose' : 'emerald'
+            }
+            stats={[
+              {
+                label: 'Por vencer (7d)',
+                value: Number(sales?.expiring_batches_count) || 0,
+                warn: Number(sales?.expiring_batches_count) > 0,
+              },
+              {
+                label: 'En riesgo',
+                value: formatMoney(sales?.expiring_value_usd),
+              },
             ]}
           />
         </div>

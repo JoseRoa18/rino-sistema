@@ -149,10 +149,11 @@ export default function SalesReport({
         range,
         columns: [
           { key: 'category_name', label: 'Categoría' },
-          { key: 'units_sold',    label: 'Unidades',  fmt: fmt.int,   align: 'right' },
-          { key: 'revenue_usd',   label: 'Ingresos',  fmt: fmt.money, align: 'right' },
-          { key: 'profit_usd',    label: 'Ganancia',  fmt: fmt.money, align: 'right' },
-          { key: 'margin_pct',    label: 'Margen %',  fmt: (v) => fmt.pct(v), align: 'right' },
+          { key: 'units_sold',    label: 'Unidades',      fmt: fmt.int,   align: 'right' },
+          { key: 'revenue_usd',   label: 'Precio venta',  fmt: fmt.money, align: 'right' },
+          { key: 'cogs_usd',      label: 'Precio costo',  fmt: fmt.money, align: 'right' },
+          { key: 'profit_usd',    label: 'Ganancia',      fmt: fmt.money, align: 'right' },
+          { key: 'margin_pct',    label: 'Margen %',      fmt: (v) => fmt.pct(v), align: 'right' },
         ],
         rows: aggregateByCategory(byCategory),
       });
@@ -467,10 +468,11 @@ function CategoriaTab({ data }) {
         title="Detalle por categoría"
         columns={[
           { key: 'category_name', label: 'Categoría' },
-          { key: 'units_sold',    label: 'Unidades',  align: 'right', fmt: fmt.int },
-          { key: 'revenue_usd',   label: 'Ingresos',  align: 'right', fmt: formatMoney },
-          { key: 'profit_usd',    label: 'Ganancia',  align: 'right', fmt: formatMoney },
-          { key: 'margin_pct',    label: 'Margen',    align: 'right', fmt: (v) => fmt.pct(v) },
+          { key: 'units_sold',    label: 'Unidades',         align: 'right', fmt: fmt.int },
+          { key: 'revenue_usd',   label: 'Precio venta',     align: 'right', fmt: formatMoney },
+          { key: 'cogs_usd',      label: 'Precio costo',     align: 'right', fmt: formatMoney },
+          { key: 'profit_usd',    label: 'Ganancia',         align: 'right', fmt: formatMoney },
+          { key: 'margin_pct',    label: 'Margen',           align: 'right', fmt: (v) => fmt.pct(v) },
         ]}
         rows={data}
       />
@@ -617,6 +619,8 @@ function aggregateByCategory(rows) {
   return Array.from(map.values())
     .map((r) => ({
       ...r,
+      // Costo (precio costo): ingresos − ganancia
+      cogs_usd:   r.revenue_usd - r.profit_usd,
       margin_pct: r.revenue_usd > 0 ? (r.profit_usd / r.revenue_usd) * 100 : 0,
     }))
     .sort((a, b) => b.revenue_usd - a.revenue_usd);

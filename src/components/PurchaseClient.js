@@ -51,11 +51,15 @@ export default function PurchaseClient({ products, suppliers: initialSuppliers, 
 
   // Filtro del picker (excluye los ya agregados)
   const filteredProducts = useMemo(() => {
-    const q = pickerSearch.trim().toLowerCase();
+    const tokens = pickerSearch.trim().toLowerCase().split(/\s+/).filter(Boolean);
     const inCart = new Set(items.map((it) => it.product_id));
     return products
       .filter((p) => !inCart.has(p.id))
-      .filter((p) => !q || p.name.toLowerCase().includes(q) || (p.sku || '').toLowerCase().includes(q))
+      .filter((p) => {
+        if (tokens.length === 0) return true;
+        const haystack = `${p.name} ${p.sku || ''}`.toLowerCase();
+        return tokens.every((t) => haystack.includes(t));
+      })
       .slice(0, 30);
   }, [products, pickerSearch, items]);
 
@@ -136,9 +140,13 @@ export default function PurchaseClient({ products, suppliers: initialSuppliers, 
       if (cost === '' || Number.isNaN(cost) || cost < 0) {
         return { ok: false, msg: 'Todos los items deben tener costo unitario válido' };
       }
+      const p = productById.get(it.product_id);
+      if (p?.tracks_expiry && !it.expires_at) {
+        return { ok: false, msg: `Falta la fecha de vencimiento para "${p.name}"` };
+      }
     }
     return { ok: true };
-  }, [items]);
+  }, [items, productById]);
 
   async function handleSubmit() {
     setError('');
@@ -157,6 +165,8 @@ export default function PurchaseClient({ products, suppliers: initialSuppliers, 
         product_id: it.product_id,
         quantity: Number(it.quantity),
         unit_cost_usd: Number(it.unit_cost_usd),
+        expires_at: it.expires_at || null,
+        batch_code: (it.batch_code || '').trim() || null,
       })),
     };
 
@@ -425,15 +435,48 @@ export default function PurchaseClient({ products, suppliers: initialSuppliers, 
                       const subtotal = qty * cost;
                       const previousCost = p?.cost_avg ? Number(p.cost_avg) : 0;
                       const costChanged = previousCost > 0 && Math.abs(cost - previousCost) / previousCost > 0.01;
+                      const tracksExpiry = !!p?.tracks_expiry;
                       return (
                         <tr key={it.tempId}>
                           <td className="px-3 py-2">
                             <div className="text-sm font-medium text-slate-900 dark:text-slate-100">
                               {p?.name || '?'}
+                              {tracksExpiry && (
+                                <span className="ml-1.5 inline-flex items-center gap-1 rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-amber-700 dark:bg-amber-500/15 dark:text-amber-400">
+                                  Vence
+                                </span>
+                              )}
                             </div>
                             <div className="font-mono text-[11px] text-slate-400">
                               {p?.sku || '—'} · stock: {Number(p?.stock || 0).toLocaleString('es-VE')} {p?.unit || ''}
                             </div>
+                            {tracksExpiry && (
+                              <div className="mt-1.5 grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+                                <div>
+                                  <label className="block text-[10px] uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                                    Vence
+                                  </label>
+                                  <input
+                                    type="date"
+                                    value={it.expires_at || ''}
+                                    onChange={(e) => updateItem(it.tempId, 'expires_at', e.target.value)}
+                                    className="input !py-1 text-xs"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-[10px] uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                                    Lote (opcional)
+                                  </label>
+                                  <input
+                                    type="text"
+                                    value={it.batch_code || ''}
+                                    onChange={(e) => updateItem(it.tempId, 'batch_code', e.target.value)}
+                                    placeholder="L-001"
+                                    className="input !py-1 text-xs"
+                                  />
+                                </div>
+                              </div>
+                            )}
                           </td>
                           <td className="px-3 py-2">
                             <input

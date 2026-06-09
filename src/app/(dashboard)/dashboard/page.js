@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 import {
   DollarSign, TrendingUp, AlertTriangle, CreditCard,
-  Receipt, ShoppingBag, Activity,
+  Receipt, ShoppingBag, Activity, Calendar,
 } from 'lucide-react';
 import KPICard from '@/components/KPICard';
 import SalesChart from '@/components/SalesChart';
@@ -146,7 +146,7 @@ export default async function DashboardPage() {
       {/* ALERTAS */}
       <section>
         <SectionLabel>Alertas</SectionLabel>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <KPICard
             label="Stock bajo mínimo"
             value={kpis?.low_stock_count || 0}
@@ -154,6 +154,18 @@ export default async function DashboardPage() {
             icon={AlertTriangle}
             accent={(kpis?.low_stock_count || 0) > 0 ? 'amber' : 'emerald'}
             href={(kpis?.low_stock_count || 0) > 0 ? '/inventario?status=bajo_minimo' : undefined}
+          />
+          <KPICard
+            label="Lotes por vencer"
+            value={kpis?.expiring_batches_count || 0}
+            hint={
+              (kpis?.expiring_batches_count || 0) > 0
+                ? `${formatMoney(kpis?.expiring_value_usd)} en riesgo · 7 días`
+                : 'sin lotes próximos a vencer'
+            }
+            icon={Calendar}
+            accent={(kpis?.expiring_batches_count || 0) > 0 ? 'rose' : 'emerald'}
+            href={(kpis?.expiring_batches_count || 0) > 0 ? '/reportes/vencimientos' : undefined}
           />
           <KPICard
             label="Cuentas por cobrar"

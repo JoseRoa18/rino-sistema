@@ -69,6 +69,7 @@ export default function ProductForm({ product, categories, rates, onClose, onSav
     min_stock: product?.min_stock ?? 0,
     unit: product?.unit || 'unidad',
     active: product?.active ?? true,
+    tracks_expiry: product?.tracks_expiry ?? false,
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -301,6 +302,7 @@ export default function ProductForm({ product, categories, rates, onClose, onSav
       min_stock: Number(form.min_stock) || 0,
       unit: form.unit,
       active: form.active,
+      tracks_expiry: !!form.tracks_expiry,
     };
 
     let productId = product?.id || null;
@@ -713,15 +715,31 @@ export default function ProductForm({ product, categories, rates, onClose, onSav
             </button>
           </fieldset>
 
-          <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
-            <input
-              type="checkbox"
-              checked={form.active}
-              onChange={(e) => update('active', e.target.checked)}
-              className="rounded border-slate-300 dark:border-slate-600 dark:bg-slate-800"
-            />
-            Producto activo
-          </label>
+          <div className="flex flex-col gap-3 rounded-lg border border-slate-200 p-3 sm:flex-row sm:items-center sm:gap-6 dark:border-slate-700">
+            <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
+              <input
+                type="checkbox"
+                checked={form.active}
+                onChange={(e) => update('active', e.target.checked)}
+                className="rounded border-slate-300 dark:border-slate-600 dark:bg-slate-800"
+              />
+              Producto activo
+            </label>
+            <label className="flex items-start gap-2 text-sm text-slate-700 dark:text-slate-300">
+              <input
+                type="checkbox"
+                checked={form.tracks_expiry}
+                onChange={(e) => update('tracks_expiry', e.target.checked)}
+                className="mt-0.5 rounded border-slate-300 dark:border-slate-600 dark:bg-slate-800"
+              />
+              <span>
+                Controla vencimiento
+                <span className="ml-1 text-[10px] font-normal text-slate-500 dark:text-slate-400">
+                  (perecederos: lácteos, embutidos, frescos…)
+                </span>
+              </span>
+            </label>
+          </div>
 
           {error && (
             <div className="flex items-start gap-2 rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-400">

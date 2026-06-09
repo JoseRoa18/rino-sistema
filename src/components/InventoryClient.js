@@ -133,10 +133,13 @@ export default function InventoryClient({ initialItems, categories, suppliers, r
 
   // Filtro base sin categoría (para conteos de chips)
   const baseFiltered = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const tokens = search.trim().toLowerCase().split(/\s+/).filter(Boolean);
     return items.filter((it) => {
       if (statusFilter !== 'all' && it.status !== statusFilter) return false;
-      if (q && !(it.name.toLowerCase().includes(q) || (it.sku || '').toLowerCase().includes(q))) return false;
+      if (tokens.length > 0) {
+        const haystack = `${it.name} ${it.sku || ''}`.toLowerCase();
+        if (!tokens.every((t) => haystack.includes(t))) return false;
+      }
       return true;
     });
   }, [items, search, statusFilter]);
@@ -328,6 +331,24 @@ export default function InventoryClient({ initialItems, categories, suppliers, r
                 const days = it.days_remaining;
                 const vel = Number(it.avg_daily_units) || 0;
 
+                const exp = it.expiry; // viene de v_products_expiry_status
+                const expiryBadge = (() => {
+                  if (!exp || !exp.next_expires_at) return null;
+                  const expired = Number(exp.batches_expired || 0);
+                  const critical = Number(exp.batches_critical || 0);
+                  const warning = Number(exp.batches_warning || 0);
+                  if (expired > 0) {
+                    return { label: `${expired} vencido${expired > 1 ? 's' : ''}`, cls: 'bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-400' };
+                  }
+                  if (critical > 0) {
+                    return { label: `≤7d`, cls: 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400' };
+                  }
+                  if (warning > 0) {
+                    return { label: `≤30d`, cls: 'bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-400' };
+                  }
+                  return null;
+                })();
+
                 return (
                   <tr key={it.product_id} className="transition hover:bg-slate-50 dark:hover:bg-slate-800/50">
                     <Td>
@@ -337,6 +358,12 @@ export default function InventoryClient({ initialItems, categories, suppliers, r
                       >
                         {it.name}
                       </Link>
+                      {expiryBadge && (
+                        <span className={`ml-1.5 inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${expiryBadge.cls}`}
+                              title={`Próximo vencimiento: ${exp.next_expires_at}`}>
+                          {expiryBadge.label}
+                        </span>
+                      )}
                       <div className="mt-0.5 font-mono text-[11px] text-slate-400 dark:text-slate-500">
                         {it.sku || '—'}
                       </div>
