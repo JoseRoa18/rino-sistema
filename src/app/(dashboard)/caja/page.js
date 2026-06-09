@@ -57,16 +57,23 @@ export default async function CajaPage({ searchParams }) {
     const { data: items } = await supabase
       .from('sale_items')
       .select(`
-        sale_id, quantity, unit_cost_usd, line_total_usd,
+        sale_id, product_id, product_name,
+        variant_name_snapshot,
+        quantity, unit_cost_usd, line_total_usd,
         sales:sale_id ( cashier_id ),
-        products:product_id ( category_id, categories ( name ) )
+        products:product_id ( category_id, name, categories ( name ) )
       `)
       .in('sale_id', saleIdsRaw);
     saleItems = (items || []).map((it) => ({
-      sale_id:       it.sale_id,
-      cashier_id:    it.sales?.cashier_id || null,
-      category_name: it.products?.categories?.name || 'Sin categoría',
-      quantity:      Number(it.quantity) || 0,
+      sale_id:        it.sale_id,
+      cashier_id:     it.sales?.cashier_id || null,
+      product_id:     it.product_id,
+      // Snapshot del nombre al momento de la venta (incluye variant si aplica);
+      // fallback al nombre vigente del producto.
+      product_name:   it.product_name || it.products?.name || 'Producto',
+      variant_name:   it.variant_name_snapshot || null,
+      category_name:  it.products?.categories?.name || 'Sin categoría',
+      quantity:       Number(it.quantity) || 0,
       line_total_usd: Number(it.line_total_usd) || 0,
       cost_total_usd: (Number(it.unit_cost_usd) || 0) * (Number(it.quantity) || 0),
     }));

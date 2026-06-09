@@ -1,10 +1,11 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { Fragment, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Banknote, Smartphone, ArrowLeftRight, CreditCard, Clock, Receipt,
   Printer, Calendar, Users, DollarSign, Wallet, Lock, CheckCircle2,
+  ChevronRight,
 } from 'lucide-react';
 import { formatMoney, convertFromUsd } from '@/lib/pricing';
 import { normalizeSpaces } from '@/lib/dates';
@@ -45,6 +46,8 @@ export default function CajaClient({
   const [cashierFilter, setCashierFilter] = useState('all');
   const [closeDialogOpen, setCloseDialogOpen] = useState(false);
   const [dailyClose, setDailyClose] = useState(initialDailyClose || null);
+  // Categoría expandida en la tabla "Por categoría" (muestra productos)
+  const [expandedCategory, setExpandedCategory] = useState(null);
 
   const isCajero = role === 'cajero';
   const canCloseDay = role === 'admin' || role === 'supervisor';
@@ -96,6 +99,43 @@ export default function CajaClient({
         margin_pct: r.revenue_usd > 0 ? (r.profit_usd / r.revenue_usd) * 100 : 0,
       }))
       .sort((a, b) => b.revenue_usd - a.revenue_usd);
+  }, [initialSaleItems, cashierFilter]);
+
+  // Productos vendidos agrupados por categoría → para el detalle al expandir
+  // una fila de "Por categoría". Cada producto trae: nombre, unidades vendidas,
+  // ingresos a precio venta, costo y ganancia. Si una variant fue vendida, se
+  // muestra al lado del nombre.
+  const productsByCategory = useMemo(() => {
+    const byCat = new Map();
+    for (const it of initialSaleItems) {
+      if (cashierFilter !== 'all' && it.cashier_id !== cashierFilter) continue;
+      const cat = it.category_name || 'Sin categoría';
+      if (!byCat.has(cat)) byCat.set(cat, new Map());
+      const productKey = `${it.product_id}|${it.variant_name || ''}`;
+      const products = byCat.get(cat);
+      const entry = products.get(productKey) || {
+        product_id: it.product_id,
+        product_name: it.product_name,
+        variant_name: it.variant_name,
+        units_sold: 0, revenue_usd: 0, cogs_usd: 0, profit_usd: 0,
+      };
+      entry.units_sold  += Number(it.quantity) || 0;
+      entry.revenue_usd += Number(it.line_total_usd) || 0;
+      entry.cogs_usd    += Number(it.cost_total_usd) || 0;
+      entry.profit_usd  += (Number(it.line_total_usd) || 0) - (Number(it.cost_total_usd) || 0);
+      products.set(productKey, entry);
+    }
+    // Convertir cada Map de productos a array ordenado por revenue desc
+    const result = {};
+    for (const [cat, products] of byCat.entries()) {
+      result[cat] = Array.from(products.values())
+        .map((p) => ({
+          ...p,
+          margin_pct: p.revenue_usd > 0 ? (p.profit_usd / p.revenue_usd) * 100 : 0,
+        }))
+        .sort((a, b) => b.revenue_usd - a.revenue_usd);
+    }
+    return result;
   }, [initialSaleItems, cashierFilter]);
 
   // Totales por cajero (solo si no es cajero)
@@ -387,7 +427,7 @@ export default function CajaClient({
               Por categoría
             </h2>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              Ingresos a precio venta, costo, ganancia y margen
+              Ingresos a precio venta, costo, ganancia y margen · click en una fila para ver los productos vendidos
             </p>
           </div>
           <div className="overflow-x-auto">
@@ -403,28 +443,108 @@ export default function CajaClient({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 bg-white dark:divide-slate-800 dark:bg-slate-900">
-                {byCategory.map((c) => (
-                  <tr key={c.category_name}>
-                    <td className="px-4 py-3 text-sm text-slate-700 dark:text-slate-300">
-                      {c.category_name}
-                    </td>
-                    <td className="px-4 py-3 text-right tabular-nums text-sm text-slate-600 dark:text-slate-400">
-                      {Number(c.units_sold || 0).toLocaleString('es-VE', { maximumFractionDigits: 3 })}
-                    </td>
-                    <td className="px-4 py-3 text-right tabular-nums text-sm font-semibold text-slate-900 dark:text-slate-100">
-                      {formatMoney(c.revenue_usd)}
-                    </td>
-                    <td className="px-4 py-3 text-right tabular-nums text-sm text-slate-600 dark:text-slate-400">
-                      {formatMoney(c.cogs_usd)}
-                    </td>
-                    <td className="px-4 py-3 text-right tabular-nums text-sm font-semibold text-emerald-700 dark:text-emerald-400">
-                      {formatMoney(c.profit_usd)}
-                    </td>
-                    <td className="px-4 py-3 text-right tabular-nums text-sm text-slate-500 dark:text-slate-400">
-                      {Number(c.margin_pct || 0).toFixed(1)}%
-                    </td>
-                  </tr>
-                ))}
+                {byCategory.map((c) => {
+                  const isExpanded = expandedCategory === c.category_name;
+                  const products = productsByCategory[c.category_name] || [];
+                  return (
+                    <Fragment key={c.category_name}>
+                      <tr
+                        onClick={() =>
+                          setExpandedCategory(isExpanded ? null : c.category_name)
+                        }
+                        className={`cursor-pointer transition hover:bg-slate-50 dark:hover:bg-slate-800/50 ${
+                          isExpanded ? 'bg-brand-50/40 dark:bg-brand-500/5' : ''
+                        }`}
+                      >
+                        <td className="px-4 py-3 text-sm text-slate-700 dark:text-slate-300">
+                          <span className="inline-flex items-center gap-1.5">
+                            <ChevronRight
+                              className={`h-3.5 w-3.5 text-slate-400 transition-transform ${
+                                isExpanded ? 'rotate-90' : ''
+                              }`}
+                            />
+                            {c.category_name}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-right tabular-nums text-sm text-slate-600 dark:text-slate-400">
+                          {Number(c.units_sold || 0).toLocaleString('es-VE', { maximumFractionDigits: 3 })}
+                        </td>
+                        <td className="px-4 py-3 text-right tabular-nums text-sm font-semibold text-slate-900 dark:text-slate-100">
+                          {formatMoney(c.revenue_usd)}
+                        </td>
+                        <td className="px-4 py-3 text-right tabular-nums text-sm text-slate-600 dark:text-slate-400">
+                          {formatMoney(c.cogs_usd)}
+                        </td>
+                        <td className="px-4 py-3 text-right tabular-nums text-sm font-semibold text-emerald-700 dark:text-emerald-400">
+                          {formatMoney(c.profit_usd)}
+                        </td>
+                        <td className="px-4 py-3 text-right tabular-nums text-sm text-slate-500 dark:text-slate-400">
+                          {Number(c.margin_pct || 0).toFixed(1)}%
+                        </td>
+                      </tr>
+                      {isExpanded && (
+                        <tr className="bg-slate-50/60 dark:bg-slate-800/30">
+                          <td colSpan={6} className="px-4 py-3">
+                            <div className="rounded-lg border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900">
+                              <div className="border-b border-slate-200 px-3 py-2 dark:border-slate-700">
+                                <p className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                                  Productos vendidos en {c.category_name} ({products.length})
+                                </p>
+                              </div>
+                              {products.length === 0 ? (
+                                <p className="px-3 py-4 text-center text-xs text-slate-400">
+                                  Sin productos.
+                                </p>
+                              ) : (
+                                <table className="min-w-full divide-y divide-slate-100 dark:divide-slate-800">
+                                  <thead>
+                                    <tr className="text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                                      <th className="px-3 py-2 text-left font-medium">Producto</th>
+                                      <th className="px-3 py-2 text-right font-medium">Unidades</th>
+                                      <th className="px-3 py-2 text-right font-medium">Precio venta</th>
+                                      <th className="px-3 py-2 text-right font-medium">Precio costo</th>
+                                      <th className="px-3 py-2 text-right font-medium">Ganancia</th>
+                                      <th className="px-3 py-2 text-right font-medium">Margen</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                                    {products.map((p) => (
+                                      <tr key={`${p.product_id}-${p.variant_name || ''}`}>
+                                        <td className="px-3 py-2 text-sm text-slate-700 dark:text-slate-300">
+                                          {p.product_name}
+                                          {p.variant_name && (
+                                            <span className="ml-1 text-[10px] font-medium text-brand-600 dark:text-brand-400">
+                                              · {p.variant_name}
+                                            </span>
+                                          )}
+                                        </td>
+                                        <td className="px-3 py-2 text-right tabular-nums text-sm text-slate-600 dark:text-slate-400">
+                                          {Number(p.units_sold).toLocaleString('es-VE', { maximumFractionDigits: 3 })}
+                                        </td>
+                                        <td className="px-3 py-2 text-right tabular-nums text-sm font-medium text-slate-900 dark:text-slate-100">
+                                          {formatMoney(p.revenue_usd)}
+                                        </td>
+                                        <td className="px-3 py-2 text-right tabular-nums text-sm text-slate-600 dark:text-slate-400">
+                                          {formatMoney(p.cogs_usd)}
+                                        </td>
+                                        <td className="px-3 py-2 text-right tabular-nums text-sm font-medium text-emerald-700 dark:text-emerald-400">
+                                          {formatMoney(p.profit_usd)}
+                                        </td>
+                                        <td className="px-3 py-2 text-right tabular-nums text-xs text-slate-500 dark:text-slate-400">
+                                          {Number(p.margin_pct || 0).toFixed(1)}%
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  );
+                })}
               </tbody>
               <tfoot className="bg-slate-50 dark:bg-slate-800/50">
                 <tr>
