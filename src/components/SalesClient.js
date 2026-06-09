@@ -1,11 +1,13 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import {
   Search, Ban, CheckCircle2, X, Receipt,
   Wallet, BarChart3,
   Banknote, Smartphone, ArrowLeftRight, CreditCard, Clock,
   DollarSign, ShoppingBag,
+  ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight,
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid,
@@ -32,12 +34,36 @@ const FILTERS = [
   { value: 'anulada',    label: 'Anuladas' },
 ];
 
-export default function SalesClient({ initialSales, role }) {
+export default function SalesClient({ initialSales, role, pagination }) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [sales, setSales] = useState(initialSales);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [success, setSuccess] = useState('');
   const [detailSaleId, setDetailSaleId] = useState(null);
+
+  // Mantener sincronizado el state local si el server manda más datos
+  // (al cambiar de página o de perPage)
+  useEffect(() => { setSales(initialSales); }, [initialSales]);
+
+  function navigateWith(updates) {
+    const params = new URLSearchParams(searchParams.toString());
+    for (const [k, v] of Object.entries(updates)) {
+      if (v === null || v === undefined) params.delete(k);
+      else params.set(k, String(v));
+    }
+    router.push(`${pathname}?${params.toString()}`);
+  }
+
+  function goToPage(p) {
+    if (p < 1 || (pagination && p > pagination.totalPages)) return;
+    navigateWith({ page: p });
+  }
+  function changePerPage(n) {
+    navigateWith({ perPage: n, page: 1 });
+  }
 
   const filtered = useMemo(() => {
     let list = sales;
@@ -78,14 +104,34 @@ export default function SalesClient({ initialSales, role }) {
         title="Ventas"
         subtitle={
           <>
-            <span className="font-medium text-slate-700 dark:text-slate-300">{counts.completadas}</span> completadas
-            {counts.anuladas > 0 && (
+            {pagination ? (
               <>
+                <span className="font-medium text-slate-700 dark:text-slate-300">
+                  {pagination.totalCount.toLocaleString('es-VE')}
+                </span>{' '}
+                ventas en total
                 {' · '}
-                <span className="font-medium text-slate-700 dark:text-slate-300">{counts.anuladas}</span> anuladas
+                Página{' '}
+                <span className="font-medium text-slate-700 dark:text-slate-300">
+                  {pagination.page} de {pagination.totalPages}
+                </span>
+                {' · '}
+                mostrando{' '}
+                <span className="font-medium text-slate-700 dark:text-slate-300">
+                  {sales.length}
+                </span>
+              </>
+            ) : (
+              <>
+                <span className="font-medium text-slate-700 dark:text-slate-300">{counts.completadas}</span> completadas
+                {counts.anuladas > 0 && (
+                  <>
+                    {' · '}
+                    <span className="font-medium text-slate-700 dark:text-slate-300">{counts.anuladas}</span> anuladas
+                  </>
+                )}
               </>
             )}
-            {' · últimas 100 transacciones'}
           </>
         }
       />
@@ -235,6 +281,68 @@ export default function SalesClient({ initialSales, role }) {
             </tbody>
           </table>
         </div>
+
+        {/* Paginación */}
+        {pagination && pagination.totalCount > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 px-4 py-3 dark:border-slate-700">
+            <div className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400">
+              <span>Por página:</span>
+              <select
+                value={pagination.perPage}
+                onChange={(e) => changePerPage(Number(e.target.value))}
+                className="input h-7 w-auto !py-0 text-xs"
+              >
+                {pagination.allowedPerPage.map((n) => (
+                  <option key={n} value={n}>{n}</option>
+                ))}
+              </select>
+              <span className="hidden sm:inline">
+                · {((pagination.page - 1) * pagination.perPage) + 1}
+                –
+                {Math.min(pagination.page * pagination.perPage, pagination.totalCount)}
+                {' '}de{' '}
+                {pagination.totalCount.toLocaleString('es-VE')}
+              </span>
+            </div>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => goToPage(1)}
+                disabled={pagination.page <= 1}
+                className="flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                title="Primera"
+              >
+                <ChevronsLeft className="h-4 w-4" />
+              </button>
+              <button
+                onClick={() => goToPage(pagination.page - 1)}
+                disabled={pagination.page <= 1}
+                className="flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                title="Anterior"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+              <span className="px-2 text-xs font-medium text-slate-700 dark:text-slate-300">
+                {pagination.page} / {pagination.totalPages}
+              </span>
+              <button
+                onClick={() => goToPage(pagination.page + 1)}
+                disabled={pagination.page >= pagination.totalPages}
+                className="flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                title="Siguiente"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </button>
+              <button
+                onClick={() => goToPage(pagination.totalPages)}
+                disabled={pagination.page >= pagination.totalPages}
+                className="flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                title="Última"
+              >
+                <ChevronsRight className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       <SaleDetailModal
@@ -343,7 +451,9 @@ function AnalyticsSection({ sales }) {
         <KPICard
           label="Transacciones"
           value={stats.countCompletadas}
-          hint="últimas 100"
+          hint={pagination
+            ? `en esta página (${pagination.perPage})`
+            : 'en la vista actual'}
           icon={ShoppingBag}
           accent="violet"
         />
