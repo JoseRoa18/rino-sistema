@@ -182,7 +182,7 @@ export default function ProductDetailClient({
           <>
             <KPICard
               label="Stock actual"
-              value={`${Number(product.stock).toLocaleString('es-VE', { maximumFractionDigits: 2 })}`}
+              value={`${Number(product.stock).toLocaleString('es-VE', { maximumFractionDigits: 3 })}`}
               hint={product.unit || 'unidades'}
               icon={Boxes}
               accent={lowStock ? 'amber' : 'emerald'}

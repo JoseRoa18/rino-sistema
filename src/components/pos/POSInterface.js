@@ -38,7 +38,10 @@ const isExactMethod = (m) => EXACT_PAYMENT_METHODS.has(m);
 // Unidades que se miden por peso/volumen → permiten cantidades decimales.
 const FRACTIONAL_UNITS = new Set(['kg', 'g', 'litro', 'l', 'ml']);
 const isFractionalUnit = (u) => FRACTIONAL_UNITS.has(String(u || '').toLowerCase());
+// Step para los botones +/− (kg suben de a 100g)
 const qtyStepFor = (u) => (isFractionalUnit(u) ? 0.1 : 1);
+// Step del input: 'any' permite tipear hasta 3 decimales en kg/g/litro.
+const qtyInputStepFor = (u) => (isFractionalUnit(u) ? '0.001' : '1');
 const formatQty = (q, u) => {
   const n = Number(q) || 0;
   if (isFractionalUnit(u)) {
@@ -1393,7 +1396,8 @@ function CartPanel({
               {cart.map((it) => {
                 const key = `${it.product.id}|${it.variant?.id || ''}`;
                 const lineFractional = !it.variant && isFractionalUnit(it.product.unit);
-                const lineStep = it.variant ? 1 : qtyStepFor(it.product.unit);
+                // step del input permite hasta 3 decimales para kg/g/L/ml
+                const lineInputStep = it.variant ? '1' : qtyInputStepFor(it.product.unit);
                 const unitUsd = familyMode
                   ? (it.variant
                       ? Number(it.product.cost_avg || 0) * Number(it.variant.base_quantity || 1)
@@ -1432,7 +1436,7 @@ function CartPanel({
                         <QtyInput
                           value={it.qty}
                           onCommit={(n) => onSetQty(key, n)}
-                          step={lineStep}
+                          step={lineInputStep}
                           ariaLabel={`Cantidad de ${it.product.name}`}
                           className={`h-7 ${lineFractional ? 'w-16' : 'w-12'} rounded-md border border-slate-200 bg-white text-center text-xs font-semibold text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100`}
                         />

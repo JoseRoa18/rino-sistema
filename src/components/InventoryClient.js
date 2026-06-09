@@ -358,12 +358,12 @@ export default function InventoryClient({ initialItems, categories, suppliers, r
                           ? 'text-amber-600 dark:text-amber-400'
                           : 'text-slate-900 dark:text-slate-100'
                       }`}>
-                        {stockNum.toLocaleString('es-VE', { maximumFractionDigits: 2 })}
+                        {stockNum.toLocaleString('es-VE', { maximumFractionDigits: 3 })}
                       </span>
                       <div className="text-[10px] text-slate-400 dark:text-slate-500">{it.unit || 'unid'}</div>
                     </Td>
                     <Td align="right" className="hidden md:table-cell font-mono text-sm text-slate-500 dark:text-slate-400">
-                      {Number(it.min_stock || 0).toLocaleString('es-VE', { maximumFractionDigits: 2 })}
+                      {Number(it.min_stock || 0).toLocaleString('es-VE', { maximumFractionDigits: 3 })}
                     </Td>
                     <Td align="right" className="hidden md:table-cell">
                       <span className="font-mono text-sm text-slate-600 dark:text-slate-300">
