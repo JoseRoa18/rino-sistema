@@ -124,12 +124,23 @@ export default function SalesClient({
               </>
             )}
             {' · '}
-            últimas <span className="font-medium text-slate-700 dark:text-slate-300">{sales.length}</span>
-            {' '}de{' '}
-            <span className="font-medium text-slate-700 dark:text-slate-300">
-              {totalCount.toLocaleString('es-VE')}
-            </span>
-            {' '}ventas
+            {fetchSize === 'all' ? (
+              <>
+                <span className="font-medium text-slate-700 dark:text-slate-300">
+                  {totalCount.toLocaleString('es-VE')}
+                </span>
+                {' '}ventas (todas)
+              </>
+            ) : (
+              <>
+                últimas <span className="font-medium text-slate-700 dark:text-slate-300">{sales.length}</span>
+                {' '}de{' '}
+                <span className="font-medium text-slate-700 dark:text-slate-300">
+                  {totalCount.toLocaleString('es-VE')}
+                </span>
+                {' '}ventas
+              </>
+            )}
           </>
         }
       />
@@ -146,19 +157,27 @@ export default function SalesClient({
         <span className="text-xs font-medium text-slate-600 dark:text-slate-400">
           Analizar últimas:
         </span>
-        {allowedFetch.map((n) => (
-          <button
-            key={n}
-            onClick={() => changeFetchSize(n)}
-            className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${
-              fetchSize === n
-                ? 'bg-brand-600 text-white shadow-sm dark:bg-brand-500'
-                : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'
-            }`}
-          >
-            {n}
-          </button>
-        ))}
+        {allowedFetch.map((n) => {
+          const isAll = n === 'all';
+          const isActive = fetchSize === n;
+          const label = isAll
+            ? `Todas (${totalCount.toLocaleString('es-VE')})`
+            : String(n);
+          return (
+            <button
+              key={String(n)}
+              onClick={() => changeFetchSize(n)}
+              className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${
+                isActive
+                  ? 'bg-brand-600 text-white shadow-sm dark:bg-brand-500'
+                  : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'
+              }`}
+              title={isAll ? 'Carga todas las ventas. Puede ser lento con miles de registros.' : undefined}
+            >
+              {label}
+            </button>
+          );
+        })}
         <span className="text-[11px] text-slate-500 dark:text-slate-400">
           ventas — los KPIs y gráficos abajo reflejan esta selección
         </span>
