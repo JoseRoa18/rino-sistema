@@ -143,7 +143,7 @@ export default function SalesClient({ initialSales, role, pagination }) {
         </div>
       )}
 
-      <AnalyticsSection sales={sales} />
+      <AnalyticsSection sales={sales} pagination={pagination} />
 
       {/* Búsqueda + filtros */}
       <div className="flex flex-wrap items-center gap-2">
@@ -379,7 +379,7 @@ function useIsDark() {
   return isDark;
 }
 
-function AnalyticsSection({ sales }) {
+function AnalyticsSection({ sales, pagination }) {
   const stats = useMemo(() => {
     const completadas = sales.filter((s) => s.status === 'completada');
     const anuladas = sales.filter((s) => s.status === 'anulada');
