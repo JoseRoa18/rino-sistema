@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, useRef } from 'react';
 import {
   Search, Plus, Minus, Trash2, ShoppingCart, X, CheckCircle2,
-  Banknote, Smartphone, CreditCard, Clock,
+  Banknote, Smartphone, CreditCard, Clock, Coins,
   Package, AlertCircle, Wallet, AlertTriangle, ChevronDown,
   Pause, FileText, Percent, ScanLine, User as UserIcon,
   ListChecks, Lock, UserPlus,
@@ -17,6 +17,7 @@ const PAYMENT_METHODS = [
   { value: 'efectivo',   label: 'Efectivo',   icon: Banknote },
   { value: 'pago_movil', label: 'Pago móvil', icon: Smartphone },
   { value: 'tarjeta',    label: 'Tarjeta',    icon: CreditCard },
+  { value: 'binance',    label: 'Binance',    icon: Coins },
   { value: 'credito',    label: 'Crédito',    icon: Clock },
 ];
 
@@ -31,8 +32,17 @@ const PARKED_SALES_KEY = 'rino_pos_parked_sales';
 const DISCOUNT_PRESETS = [5, 10, 15, 20];
 
 // Métodos electrónicos: el monto siempre se cobra exacto, sin vuelto.
-const EXACT_PAYMENT_METHODS = new Set(['pago_movil', 'tarjeta']);
+// Cada uno tiene una moneda fija de cobro:
+//   - pago_movil / tarjeta → Bs. (VES)
+//   - binance (USDT)       → USD (1 USDT = 1 USD)
+const EXACT_METHOD_CURRENCY = {
+  pago_movil: 'VES',
+  tarjeta:    'VES',
+  binance:    'USD',
+};
+const EXACT_PAYMENT_METHODS = new Set(Object.keys(EXACT_METHOD_CURRENCY));
 const isExactMethod = (m) => EXACT_PAYMENT_METHODS.has(m);
+const exactMethodCurrency = (m) => EXACT_METHOD_CURRENCY[m] || null;
 
 // Unidades que se miden por peso/volumen → permiten cantidades decimales.
 const FRACTIONAL_UNITS = new Set(['kg', 'g', 'litro', 'l', 'ml']);
@@ -77,11 +87,12 @@ export default function POSInterface({
   const [paidCurrency, setPaidCurrency] = useState('USD');
   const [paidAmount, setPaidAmount] = useState('');
 
-  // Punto/Pago móvil: la moneda es SIEMPRE Bs. Forzamos paidCurrency a 'VES'
-  // cuando se selecciona uno de esos métodos.
+  // Métodos de monto exacto: la moneda de cobro es fija. Forzamos paidCurrency
+  // a la moneda del método (Bs. para pago móvil/tarjeta, USD para Binance/USDT).
   useEffect(() => {
-    if (isExactMethod(paymentMethod) && paidCurrency !== 'VES') {
-      setPaidCurrency('VES');
+    const forced = exactMethodCurrency(paymentMethod);
+    if (forced && paidCurrency !== forced) {
+      setPaidCurrency(forced);
       setPaidAmount('');
     }
   }, [paymentMethod, paidCurrency]);
@@ -1855,22 +1866,38 @@ function PagoPanel({
       )}
 
       {isExactMethod(paymentMethod) && (
-        <div className="rounded-lg border-2 border-emerald-300 bg-emerald-50 p-3 dark:border-emerald-500/40 dark:bg-emerald-500/10">
-          <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-400">
-            <CheckCircle2 className="h-3.5 w-3.5" />
-            Pago exacto en Bs.
+        paidCurrency === 'USD' ? (
+          <div className="rounded-lg border-2 border-emerald-300 bg-emerald-50 p-3 dark:border-emerald-500/40 dark:bg-emerald-500/10">
+            <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-400">
+              <CheckCircle2 className="h-3.5 w-3.5" />
+              Pago exacto en USDT
+            </div>
+            <p className="mt-1 font-mono text-3xl font-bold text-emerald-700 dark:text-emerald-400">
+              {Number(totalUsd).toFixed(2)}
+              <span className="ml-1.5 text-lg">USDT</span>
+            </p>
+            <p className="mt-1.5 text-[11px] text-slate-600 dark:text-slate-400">
+              Se cobra el total exacto en USDT (1 USDT = 1 USD) por Binance. Sin vuelto.
+            </p>
           </div>
-          <p className="mt-1 font-mono text-3xl font-bold text-emerald-700 dark:text-emerald-400">
-            {Number(totalInPayCurrency).toLocaleString('es-VE', { maximumFractionDigits: 2 })}
-            <span className="ml-1.5 text-lg">Bs.</span>
-          </p>
-          <p className="mt-0.5 font-mono text-[11px] text-slate-500 dark:text-slate-400">
-            ≈ {formatMoney(totalUsd)}
-          </p>
-          <p className="mt-1.5 text-[11px] text-slate-600 dark:text-slate-400">
-            Se cobra el total exacto en bolívares desde el dispositivo. Sin vuelto.
-          </p>
-        </div>
+        ) : (
+          <div className="rounded-lg border-2 border-emerald-300 bg-emerald-50 p-3 dark:border-emerald-500/40 dark:bg-emerald-500/10">
+            <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-400">
+              <CheckCircle2 className="h-3.5 w-3.5" />
+              Pago exacto en Bs.
+            </div>
+            <p className="mt-1 font-mono text-3xl font-bold text-emerald-700 dark:text-emerald-400">
+              {Number(totalInPayCurrency).toLocaleString('es-VE', { maximumFractionDigits: 2 })}
+              <span className="ml-1.5 text-lg">Bs.</span>
+            </p>
+            <p className="mt-0.5 font-mono text-[11px] text-slate-500 dark:text-slate-400">
+              ≈ {formatMoney(totalUsd)}
+            </p>
+            <p className="mt-1.5 text-[11px] text-slate-600 dark:text-slate-400">
+              Se cobra el total exacto en bolívares desde el dispositivo. Sin vuelto.
+            </p>
+          </div>
+        )
       )}
 
       {error && (

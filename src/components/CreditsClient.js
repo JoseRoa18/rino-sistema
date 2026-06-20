@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   Search, X, CreditCard, AlertTriangle, CalendarClock, CheckCircle2,
-  Clock, Banknote, Smartphone, ArrowLeftRight, User, ExternalLink,
+  Clock, Banknote, Smartphone, ArrowLeftRight, Coins, User, ExternalLink,
   HandCoins, TrendingUp,
 } from 'lucide-react';
 import { formatMoney } from '@/lib/pricing';
@@ -27,6 +27,7 @@ const PAYMENT_META = {
   pago_movil:    { label: 'Pago móvil',    icon: Smartphone },
   transferencia: { label: 'Transferencia', icon: ArrowLeftRight },
   tarjeta:       { label: 'Tarjeta',       icon: CreditCard },
+  binance:       { label: 'Binance',       icon: Coins },
   credito:       { label: 'Crédito',       icon: Clock },
 };
 

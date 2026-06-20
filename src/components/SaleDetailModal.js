@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import {
   AlertTriangle, Ban, CheckCircle2, X, Receipt, Wallet, FileText,
   Printer, Lock, User as UserIcon, Calendar,
-  Banknote, Smartphone, ArrowLeftRight, CreditCard, Clock,
+  Banknote, Smartphone, ArrowLeftRight, CreditCard, Clock, Coins,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { formatMoney } from '@/lib/pricing';
@@ -15,6 +15,7 @@ const PAYMENT_META = {
   pago_movil:    { label: 'Pago móvil',    icon: Smartphone },
   transferencia: { label: 'Transferencia', icon: ArrowLeftRight },
   tarjeta:       { label: 'Tarjeta',       icon: CreditCard },
+  binance:       { label: 'Binance',       icon: Coins },
   credito:       { label: 'Crédito',       icon: Clock },
 };
 

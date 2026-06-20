@@ -3,7 +3,7 @@
 import { Fragment, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  Banknote, Smartphone, ArrowLeftRight, CreditCard, Clock, Receipt,
+  Banknote, Smartphone, ArrowLeftRight, CreditCard, Clock, Coins, Receipt,
   Printer, Calendar, Users, DollarSign, Wallet, Lock, CheckCircle2,
   ChevronRight,
 } from 'lucide-react';
@@ -19,6 +19,7 @@ const PAYMENT_METHODS = [
   { value: 'pago_movil',    label: 'Pago móvil',    icon: Smartphone,    color: 'brand'   },
   { value: 'transferencia', label: 'Transferencia', icon: ArrowLeftRight, color: 'violet'  },
   { value: 'tarjeta',       label: 'Tarjeta',       icon: CreditCard,    color: 'amber'   },
+  { value: 'binance',       label: 'Binance',       icon: Coins,         color: 'gold'    },
   { value: 'credito',       label: 'Crédito',       icon: Clock,         color: 'rose'    },
 ];
 
@@ -27,6 +28,7 @@ const COLOR_CLASSES = {
   brand:   'bg-brand-50 text-brand-700 dark:bg-brand-500/10 dark:text-brand-400',
   violet:  'bg-violet-50 text-violet-700 dark:bg-violet-500/10 dark:text-violet-400',
   amber:   'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400',
+  gold:    'bg-yellow-50 text-yellow-700 dark:bg-yellow-500/10 dark:text-yellow-400',
   rose:    'bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-400',
 };
 
@@ -35,6 +37,7 @@ const BAR_COLORS = {
   brand:   'bg-brand-500 dark:bg-brand-400',
   violet:  'bg-violet-500 dark:bg-violet-400',
   amber:   'bg-amber-500 dark:bg-amber-400',
+  gold:    'bg-yellow-500 dark:bg-yellow-400',
   rose:    'bg-rose-500 dark:bg-rose-400',
 };
 
@@ -159,14 +162,19 @@ export default function CajaClient({
   const totalCop = convertFromUsd(totalUsd, 'COP', rate);
 
   // Recibido por moneda (paid_currency × paid_amount):
-  //   - USD: aquí siempre es efectivo (no hay Zelle/transferencia USD operativa)
+  //   - USD: efectivo en dólares físicos (Binance/USDT se separa aparte)
   //   - VES: aquí siempre es pago móvil / transferencia (nunca efectivo Bs.)
   //   - COP: aquí siempre es efectivo en pesos
+  //   - binance: USDT digital (1 USDT = 1 USD), NO es efectivo en caja
   // El crédito no entra (no hay cobro inmediato).
   const receivedByCurrency = useMemo(() => {
-    const r = { USD: 0, VES: 0, COP: 0 };
+    const r = { USD: 0, VES: 0, COP: 0, binance: 0 };
     for (const s of filteredSales) {
       if (s.payment_method === 'credito') continue;
+      if (s.payment_method === 'binance') {
+        r.binance += Number(s.paid_amount) || 0;
+        continue;
+      }
       const cur = s.paid_currency;
       if (cur && r[cur] !== undefined) {
         r[cur] += Number(s.paid_amount) || 0;
@@ -287,7 +295,7 @@ export default function CajaClient({
       </div>
 
       {/* Resumen general */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         <KPICard
           label="Total vendido"
           value={formatMoney(totalUsd)}
@@ -315,6 +323,13 @@ export default function CajaClient({
           hint="Pesos en caja"
           icon={Banknote}
           accent="amber"
+        />
+        <KPICard
+          label="Binance USDT"
+          value={`${receivedByCurrency.binance.toLocaleString('es-VE', { maximumFractionDigits: 2 })} USDT`}
+          hint="Digital · no es efectivo"
+          icon={Coins}
+          accent="violet"
         />
       </div>
 

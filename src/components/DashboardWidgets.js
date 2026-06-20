@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   Wallet, Receipt, ShoppingCart, Package, Flame, ArrowRight,
-  Banknote, Smartphone, ArrowLeftRight, CreditCard, Clock,
+  Banknote, Smartphone, ArrowLeftRight, CreditCard, Clock, Coins,
 } from 'lucide-react';
 import {
   ResponsiveContainer, PieChart, Pie, Cell, Tooltip,
@@ -18,6 +18,7 @@ const PAYMENT_META = {
   pago_movil:    { label: 'Pago móvil',    icon: Smartphone },
   transferencia: { label: 'Transferencia', icon: ArrowLeftRight },
   tarjeta:       { label: 'Tarjeta',       icon: CreditCard },
+  binance:       { label: 'Binance',       icon: Coins },
   credito:       { label: 'Crédito',       icon: Clock },
 };
 
@@ -26,6 +27,7 @@ const METHOD_COLORS = {
   pago_movil:    '#0ea5e9',
   transferencia: '#8b5cf6',
   tarjeta:       '#f59e0b',
+  binance:       '#f0b90b',
   credito:       '#f43f5e',
 };
 

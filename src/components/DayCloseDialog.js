@@ -18,6 +18,7 @@ const PAYMENT_LABELS = {
   transferencia: 'Transferencia',
   pago_movil:    'Pago móvil',
   tarjeta:       'Tarjeta',
+  binance:       'Binance',
   credito:       'Crédito',
   mixto:         'Mixto',
 };
