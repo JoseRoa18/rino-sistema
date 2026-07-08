@@ -256,9 +256,9 @@ export default function ProductsClient({ initialProducts, categories, role, curr
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400">Producto</th>
                 <th className="hidden px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400 lg:table-cell">Categoría</th>
                 {isAdmin && (
-                  <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400">Costo</th>
+                  <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400">Costo COP</th>
                 )}
-                <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400">Precio USD</th>
+                <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400">Precio COP</th>
                 <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400">Stock</th>
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400">Estado</th>
                 {isAdmin && <th className="px-4 py-3" />}
@@ -292,11 +292,11 @@ export default function ProductsClient({ initialProducts, categories, role, curr
                     </td>
                     {isAdmin && (
                       <td className="whitespace-nowrap px-4 py-3 text-right text-sm text-slate-600 dark:text-slate-400">
-                        {formatMoney(p.cost_avg)}
+                        {formatMoney(p.cost_avg_cop, 'COP')}
                       </td>
                     )}
                     <td className="whitespace-nowrap px-4 py-3 text-right text-sm font-semibold text-slate-900 dark:text-slate-100">
-                      {formatMoney(p.price_usd)}
+                      {formatMoney(p.price_cop, 'COP')}
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 text-right text-sm">
                       <span

@@ -83,9 +83,9 @@ export default function ProductDetailClient({
   const lowStock = Number(product.stock) <= Number(product.min_stock || 0) && Number(product.min_stock) > 0;
   const negativeMargin =
     showCosts &&
-    Number(product.cost_avg) > 0 &&
-    Number(product.price_usd) > 0 &&
-    Number(product.price_usd) < Number(product.cost_avg);
+    Number(product.cost_avg_cop) > 0 &&
+    Number(product.price_cop) > 0 &&
+    Number(product.price_cop) < Number(product.cost_avg_cop);
 
   return (
     <div className="space-y-6">
@@ -189,8 +189,8 @@ export default function ProductDetailClient({
             />
             <KPICard
               label="Precio actual"
-              value={formatMoney(product.price_usd)}
-              hint="USD"
+              value={formatMoney(product.price_cop, 'COP')}
+              hint="COP (pesos)"
               icon={DollarSign}
               accent="brand"
             />
@@ -222,8 +222,14 @@ export default function ProductDetailClient({
             </div>
 
             <div className="flex justify-between border-b border-slate-100 pb-2 dark:border-slate-800">
-              <dt className="text-slate-500 dark:text-slate-400">Precio USD</dt>
+              <dt className="text-slate-500 dark:text-slate-400">Precio COP (pesos)</dt>
               <dd className="font-mono font-semibold text-slate-900 dark:text-slate-100">
+                {formatMoney(product.price_cop, 'COP')}
+              </dd>
+            </div>
+            <div className="flex justify-between border-b border-slate-100 pb-2 dark:border-slate-800">
+              <dt className="text-slate-500 dark:text-slate-400">Precio USD</dt>
+              <dd className="font-mono text-slate-700 dark:text-slate-300">
                 {formatMoney(product.price_usd, 'USD')}
               </dd>
             </div>
@@ -233,19 +239,13 @@ export default function ProductDetailClient({
                 {formatMoney(product.price_ves, 'VES')}
               </dd>
             </div>
-            <div className="flex justify-between border-b border-slate-100 pb-2 dark:border-slate-800">
-              <dt className="text-slate-500 dark:text-slate-400">Precio COP</dt>
-              <dd className="font-mono text-slate-700 dark:text-slate-300">
-                {formatMoney(product.price_cop, 'COP')}
-              </dd>
-            </div>
 
             {showCosts && (
               <>
                 <div className="flex justify-between border-b border-slate-100 pb-2 dark:border-slate-800">
-                  <dt className="text-slate-500 dark:text-slate-400">Costo promedio</dt>
+                  <dt className="text-slate-500 dark:text-slate-400">Costo promedio (COP)</dt>
                   <dd className={`font-mono font-semibold ${negativeMargin ? 'text-rose-600 dark:text-rose-400' : 'text-slate-900 dark:text-slate-100'}`}>
-                    {formatMoney(product.cost_avg)}
+                    {formatMoney(product.cost_avg_cop, 'COP')}
                   </dd>
                 </div>
                 <div className="flex justify-between border-b border-slate-100 pb-2 dark:border-slate-800">
