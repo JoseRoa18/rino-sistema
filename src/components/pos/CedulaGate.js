@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useRef, useState, useEffect } from 'react';
-import { IdCard, Search, UserPlus, ArrowRight, Users, Pause, X } from 'lucide-react';
+import { IdCard, Search, UserPlus, ArrowRight, Users, Pause, X, Home } from 'lucide-react';
 
 // Normaliza una cédula/RIF quitando separadores para comparar sin importar el
 // formato (V-12.345.678 == v12345678).
@@ -28,6 +28,9 @@ export default function CedulaGate({ customers, role, onSelect, onRegister, onCl
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
+
+  // Cliente interno "Familia" (único con is_internal). Solo admin/supervisor.
+  const familyCustomer = useMemo(() => customers.find((c) => c.is_internal), [customers]);
 
   const docMatches = useMemo(() => {
     const t = normDoc(doc);
@@ -118,12 +121,22 @@ export default function CedulaGate({ customers, role, onSelect, onRegister, onCl
               </div>
             )}
 
+            {canFamily && familyCustomer && (
+              <button
+                onClick={() => onSelect(familyCustomer)}
+                className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg border border-sky-300 bg-sky-50 px-3 py-2 text-sm font-medium text-sky-700 hover:bg-sky-100 dark:border-sky-500/40 dark:bg-sky-500/10 dark:text-sky-300 dark:hover:bg-sky-500/20"
+              >
+                <Home className="h-4 w-4" />
+                Consumo familiar
+              </button>
+            )}
+
             <button
               onClick={() => { setNameMode(true); setSearched(false); }}
-              className="mt-4 flex w-full items-center justify-center gap-1.5 text-xs font-medium text-slate-500 hover:text-brand-600 dark:text-slate-400 dark:hover:text-brand-400"
+              className="mt-3 flex w-full items-center justify-center gap-1.5 text-xs font-medium text-slate-500 hover:text-brand-600 dark:text-slate-400 dark:hover:text-brand-400"
             >
               <Users className="h-3.5 w-3.5" />
-              Buscar por nombre{canFamily ? ' / consumo familiar' : ''}
+              Buscar por nombre
             </button>
           </>
         ) : (
