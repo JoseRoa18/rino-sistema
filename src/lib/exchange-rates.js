@@ -89,14 +89,16 @@ async function fetchCoRate() {
 
 /**
  * Trae todas las tasas en paralelo. Usado por el cron y el botón manual.
- * No incluye `rino_cop_ves` — esa se edita manualmente por el admin.
+ *
+ * No incluye `rino_cop_ves` ni `usd_cop` — ambas se editan manualmente por el
+ * admin. El USD/COP del TRM se devuelve como `usd_cop_trm` (solo referencia).
  */
 export async function fetchAllRates() {
   const [ve, cop] = await Promise.all([fetchVeRates(), fetchCoRate()]);
   return {
     usd_ves_paralelo: ve.paralelo,
     usd_ves_bcv: ve.bcv,
-    usd_cop: cop,
+    usd_cop_trm: cop,
     source_updated_at: ve.fechaActualizacion,
     fetched_at: new Date().toISOString(),
   };

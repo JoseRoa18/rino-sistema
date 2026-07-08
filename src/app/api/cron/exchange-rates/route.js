@@ -13,6 +13,7 @@
 
 import { NextResponse } from 'next/server';
 import { fetchAllRates } from '@/lib/exchange-rates';
+import { upsertAutoRates } from '@/lib/rates-write';
 import { createServiceClient } from '@/lib/supabase/server';
 import { revalidateTag } from 'next/cache';
 import { todayStr } from '@/lib/dates';
@@ -28,7 +29,7 @@ async function handler(request) {
 
   const rates = await fetchAllRates();
 
-  if (!rates.usd_ves_paralelo && !rates.usd_ves_bcv && !rates.usd_cop) {
+  if (!rates.usd_ves_paralelo && !rates.usd_ves_bcv && !rates.usd_cop_trm) {
     return NextResponse.json(
       { ok: false, error: 'Todas las fuentes externas fallaron', rates },
       { status: 502 }
@@ -38,20 +39,9 @@ async function handler(request) {
   const supabase = createServiceClient();
   const today = todayStr();
 
-  const { data, error } = await supabase
-    .from('exchange_rates')
-    .upsert(
-      {
-        rate_date: today,
-        usd_ves_paralelo: rates.usd_ves_paralelo,
-        usd_ves_bcv: rates.usd_ves_bcv,
-        usd_cop: rates.usd_cop,
-        source: 'cron',
-      },
-      { onConflict: 'rate_date' }
-    )
-    .select()
-    .single();
+  // usd_cop es MANUAL (moneda base): no lo pisamos, solo actualizamos paralelo,
+  // BCV y el TRM de referencia, conservando/heredando la tasa manual del peso.
+  const { data, error } = await upsertAutoRates(supabase, today, rates, 'cron');
 
   if (error) {
     return NextResponse.json({ error: error.message, rates }, { status: 500 });

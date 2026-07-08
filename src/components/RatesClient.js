@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import {
   refreshRatesAction,
-  updateCustomRateAction,
+  updateManualRateAction,
 } from '@/app/(dashboard)/tasas/actions';
 import PageHeader from './PageHeader';
 import Sparkline from './Sparkline';
@@ -20,6 +20,9 @@ export default function RatesClient({ initialRates, role }) {
   const [editingCustom, setEditingCustom] = useState(false);
   const [customInput, setCustomInput] = useState('');
   const [savingCustom, setSavingCustom] = useState(false);
+  const [editingCop, setEditingCop] = useState(false);
+  const [copInput, setCopInput] = useState('');
+  const [savingCop, setSavingCop] = useState(false);
   const isAdmin = role === 'admin';
 
   function handleManualRefresh() {
@@ -41,17 +44,21 @@ export default function RatesClient({ initialRates, role }) {
     });
   }
 
+  function applyUpdatedRate(rates) {
+    setRates((prev) => {
+      const others = prev.filter((r) => r.rate_date !== rates.rate_date);
+      return [rates, ...others].slice(0, 30);
+    });
+  }
+
   async function handleSaveCustom() {
     setMessage({ type: '', text: '' });
     setSavingCustom(true);
-    const result = await updateCustomRateAction(customInput);
+    const result = await updateManualRateAction('rino_cop_ves', customInput);
     setSavingCustom(false);
     if (result.ok) {
       setMessage({ type: 'success', text: 'Tasa personalizada actualizada.' });
-      setRates((prev) => {
-        const others = prev.filter((r) => r.rate_date !== result.rates.rate_date);
-        return [result.rates, ...others].slice(0, 30);
-      });
+      applyUpdatedRate(result.rates);
       setEditingCustom(false);
     } else {
       setMessage({ type: 'error', text: result.error || 'No se pudo guardar.' });
@@ -61,6 +68,25 @@ export default function RatesClient({ initialRates, role }) {
   function startEditCustom() {
     setCustomInput(today?.rino_cop_ves ? Number(today.rino_cop_ves).toString() : '');
     setEditingCustom(true);
+  }
+
+  async function handleSaveCop() {
+    setMessage({ type: '', text: '' });
+    setSavingCop(true);
+    const result = await updateManualRateAction('usd_cop', copInput);
+    setSavingCop(false);
+    if (result.ok) {
+      setMessage({ type: 'success', text: 'Tasa USD/COP actualizada.' });
+      applyUpdatedRate(result.rates);
+      setEditingCop(false);
+    } else {
+      setMessage({ type: 'error', text: result.error || 'No se pudo guardar.' });
+    }
+  }
+
+  function startEditCop() {
+    setCopInput(today?.usd_cop ? Number(today.usd_cop).toString() : '');
+    setEditingCop(true);
   }
 
   const today = rates[0];
@@ -75,6 +101,7 @@ export default function RatesClient({ initialRates, role }) {
       bcv:      sorted.map((r) => Number(r.usd_ves_bcv)).filter(Number.isFinite),
       rino:     sorted.map((r) => Number(r.rino_cop_ves)).filter(Number.isFinite),
       cop:      sorted.map((r) => Number(r.usd_cop)).filter(Number.isFinite),
+      copTrm:   sorted.map((r) => Number(r.usd_cop_trm)).filter(Number.isFinite),
     };
   }, [rates]);
 
@@ -87,6 +114,7 @@ export default function RatesClient({ initialRates, role }) {
   const varBcv      = variation(today?.usd_ves_bcv,      yesterday?.usd_ves_bcv);
   const varRino     = variation(today?.rino_cop_ves,     yesterday?.rino_cop_ves);
   const varCop      = variation(today?.usd_cop,          yesterday?.usd_cop);
+  const varCopTrm   = variation(today?.usd_cop_trm,      yesterday?.usd_cop_trm);
 
   const spread =
     today?.usd_ves_paralelo && today?.usd_ves_bcv
@@ -105,7 +133,7 @@ export default function RatesClient({ initialRates, role }) {
     <div className="space-y-6">
       <PageHeader
         title="Tasas cambiarias"
-        subtitle="Tasas USD/VES y USD/COP automáticas + tasa personalizada Rino COP→VES"
+        subtitle="El peso (USD/COP) es la tasa base manual · Bs. automáticas + tasa Rino COP→Bs · TRM solo referencia"
         actions={
           isAdmin && (
             <button
@@ -132,7 +160,45 @@ export default function RatesClient({ initialRates, role }) {
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+        {/* USD/COP MANUAL — moneda base del negocio, editable por admin */}
+        <EditableRateCard
+          label="USD/COP · base"
+          value={today?.usd_cop}
+          variation={varCop}
+          series={sparkSeries.cop}
+          isAdmin={isAdmin}
+          editing={editingCop}
+          input={copInput}
+          onInputChange={setCopInput}
+          onStartEdit={startEditCop}
+          onSave={handleSaveCop}
+          onCancel={() => setEditingCop(false)}
+          saving={savingCop}
+          decimals={0}
+          step="1"
+          placeholder="Ej: 4300"
+          editHint="Cuántos pesos equivale 1 USD"
+          footer={
+            <>
+              Moneda base · se usa en los cálculos de precios
+              {today?.usd_cop_trm && (
+                <span className="ml-1">· TRM {Number(today.usd_cop_trm).toFixed(0)}</span>
+              )}
+            </>
+          }
+          accent="violet"
+        />
+
+        <RateCard
+          label="USD/COP TRM"
+          value={today?.usd_cop_trm ? Number(today.usd_cop_trm).toFixed(0) : '—'}
+          variation={varCopTrm}
+          footnote="Referencia · DolarApi (no se usa en cálculos)"
+          series={sparkSeries.copTrm}
+          accent="violet"
+        />
+
         <RateCard
           label="USD/VES Paralelo"
           value={today?.usd_ves_paralelo ? Number(today.usd_ves_paralelo).toFixed(2) : '—'}
@@ -157,8 +223,9 @@ export default function RatesClient({ initialRates, role }) {
           accent="brand"
         />
 
-        {/* Tasa personalizada — editable inline por admin */}
-        <CustomRateCard
+        {/* Tasa personalizada Rino COP→Bs — editable inline por admin */}
+        <EditableRateCard
+          label="Tasa Rino COP→Bs"
           value={today?.rino_cop_ves}
           variation={varRino}
           series={sparkSeries.rino}
@@ -170,17 +237,18 @@ export default function RatesClient({ initialRates, role }) {
           onSave={handleSaveCustom}
           onCancel={() => setEditingCustom(false)}
           saving={savingCustom}
-          examplePreview={examplePreview}
-          exampleCop={exampleCop}
-        />
-
-        <RateCard
-          label="USD/COP"
-          value={today?.usd_cop ? Number(today.usd_cop).toFixed(0) : '—'}
-          variation={varCop}
-          footnote="Peso colombiano · DolarApi"
-          series={sparkSeries.cop}
-          accent="violet"
+          decimals={2}
+          step="0.0001"
+          placeholder="Ej: 5.5"
+          editHint="Cuántos pesos colombianos equivalen a 1 bolívar"
+          footer={
+            examplePreview
+              ? `${exampleCop.toLocaleString('es-CO')} COP → ${examplePreview} Bs`
+              : isAdmin
+              ? 'Aún no establecida — click ✏️ para definirla'
+              : 'Pendiente de definir por admin'
+          }
+          accent="amber"
         />
       </div>
 
@@ -204,8 +272,9 @@ export default function RatesClient({ initialRates, role }) {
                   <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400">Fecha</th>
                   <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400">Paralelo</th>
                   <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400">BCV</th>
-                  <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400">Rino COP→VES</th>
-                  <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400">USD/COP</th>
+                  <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400">Rino COP→Bs</th>
+                  <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400">USD/COP base</th>
+                  <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400">TRM ref.</th>
                   <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400">Origen</th>
                 </tr>
               </thead>
@@ -226,6 +295,9 @@ export default function RatesClient({ initialRates, role }) {
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 text-right font-mono text-sm text-slate-700 dark:text-slate-300">
                       {r.usd_cop ? Number(r.usd_cop).toFixed(0) : '—'}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 text-right font-mono text-sm text-slate-400 dark:text-slate-500">
+                      {r.usd_cop_trm ? Number(r.usd_cop_trm).toFixed(0) : '—'}
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 text-xs capitalize text-slate-500 dark:text-slate-400">
                       {r.source}
@@ -277,25 +349,32 @@ function RateCard({ label, labelIcon: LabelIcon, value, variation, footnote, ser
 }
 
 // ============================================================================
-// CustomRateCard — tasa personalizada Rino COP→VES (editable por admin)
+// EditableRateCard — tasa manual editable inline por admin (USD/COP y Rino)
 // ============================================================================
-function CustomRateCard({
-  value, variation, series, isAdmin,
+const EDITABLE_ACCENTS = {
+  amber:  { text: 'text-amber-700 dark:text-amber-400',   chrome: 'border-amber-200 ring-amber-100 dark:border-amber-500/30 dark:ring-amber-500/10',   hover: 'hover:bg-amber-100 hover:text-amber-700 dark:hover:bg-amber-500/20 dark:hover:text-amber-400' },
+  violet: { text: 'text-violet-700 dark:text-violet-400', chrome: 'border-violet-200 ring-violet-100 dark:border-violet-500/30 dark:ring-violet-500/10', hover: 'hover:bg-violet-100 hover:text-violet-700 dark:hover:bg-violet-500/20 dark:hover:text-violet-400' },
+};
+
+function EditableRateCard({
+  label, value, variation, series, isAdmin,
   editing, input, onInputChange, onStartEdit, onSave, onCancel, saving,
-  examplePreview, exampleCop,
+  decimals = 2, step = '0.0001', placeholder = 'Ej: 5.5',
+  editHint, footer, accent = 'amber',
 }) {
+  const a = EDITABLE_ACCENTS[accent] || EDITABLE_ACCENTS.amber;
   const hasValue = value !== null && value !== undefined;
   return (
-    <div className="card relative overflow-hidden border-amber-200 p-5 ring-1 ring-amber-100 dark:border-amber-500/30 dark:ring-amber-500/10">
+    <div className={`card relative overflow-hidden p-5 ring-1 ${a.chrome}`}>
       <div className="flex items-start justify-between gap-2">
-        <p className="flex items-center gap-1.5 text-sm font-medium text-amber-700 dark:text-amber-400">
+        <p className={`flex items-center gap-1.5 text-sm font-medium ${a.text}`}>
           <Settings className="h-3.5 w-3.5" />
-          Tasa personalizada Rino
+          {label}
         </p>
         {isAdmin && !editing && (
           <button
             onClick={onStartEdit}
-            className="rounded p-1 text-slate-400 hover:bg-amber-100 hover:text-amber-700 dark:hover:bg-amber-500/20 dark:hover:text-amber-400"
+            className={`rounded p-1 text-slate-400 ${a.hover}`}
             title="Editar"
           >
             <Pencil className="h-3.5 w-3.5" />
@@ -308,12 +387,12 @@ function CustomRateCard({
           <div className="flex items-center gap-1">
             <input
               type="number"
-              step="0.0001"
+              step={step}
               min="0"
               value={input}
               onChange={(e) => onInputChange(e.target.value)}
               autoFocus
-              placeholder="Ej: 5.5"
+              placeholder={placeholder}
               className="input flex-1 font-mono text-lg"
               onKeyDown={(e) => {
                 if (e.key === 'Enter') onSave();
@@ -337,18 +416,18 @@ function CustomRateCard({
               <X className="h-4 w-4" />
             </button>
           </div>
-          <p className="text-[11px] text-slate-500 dark:text-slate-400">
-            Cuántos pesos colombianos equivalen a 1 bolívar
-          </p>
+          {editHint && (
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">{editHint}</p>
+          )}
         </div>
       ) : (
         <>
           <div className="mt-1 flex items-end justify-between gap-3">
             <p className="text-3xl font-bold leading-none text-slate-900 dark:text-slate-100">
-              {hasValue ? Number(value).toFixed(2) : '—'}
+              {hasValue ? Number(value).toFixed(decimals) : '—'}
             </p>
             {series.length >= 2 && (
-              <Sparkline data={series} accent="amber" className="h-10 w-24 flex-shrink-0" />
+              <Sparkline data={series} accent={accent} className="h-10 w-24 flex-shrink-0" />
             )}
           </div>
           {variation !== null && variation !== undefined && (
@@ -363,13 +442,9 @@ function CustomRateCard({
               {variation.toFixed(2)}% vs ayer
             </p>
           )}
-          <p className="mt-2 text-xs text-slate-400 dark:text-slate-500">
-            {hasValue
-              ? `${exampleCop.toLocaleString('es-CO')} COP → ${examplePreview} Bs`
-              : isAdmin
-              ? 'Aún no establecida — click ✏️ para definirla'
-              : 'Pendiente de definir por admin'}
-          </p>
+          {footer && (
+            <p className="mt-2 text-xs text-slate-400 dark:text-slate-500">{footer}</p>
+          )}
         </>
       )}
     </div>

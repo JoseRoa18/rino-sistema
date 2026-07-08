@@ -3,6 +3,7 @@
 import { revalidateTag, revalidatePath } from 'next/cache';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { fetchAllRates } from '@/lib/exchange-rates';
+import { upsertAutoRates } from '@/lib/rates-write';
 import { todayStr } from '@/lib/dates';
 
 /**
@@ -26,7 +27,7 @@ export async function refreshRatesAction() {
 
   const rates = await fetchAllRates();
 
-  if (!rates.usd_ves_paralelo && !rates.usd_ves_bcv && !rates.usd_cop) {
+  if (!rates.usd_ves_paralelo && !rates.usd_ves_bcv && !rates.usd_cop_trm) {
     return {
       ok: false,
       error: 'No se pudo obtener ninguna tasa. Las fuentes externas pueden estar caídas.',
@@ -36,20 +37,9 @@ export async function refreshRatesAction() {
   const service = createServiceClient();
   const today = todayStr();
 
-  const { data, error } = await service
-    .from('exchange_rates')
-    .upsert(
-      {
-        rate_date: today,
-        usd_ves_paralelo: rates.usd_ves_paralelo,
-        usd_ves_bcv: rates.usd_ves_bcv,
-        usd_cop: rates.usd_cop,
-        source: 'manual',
-      },
-      { onConflict: 'rate_date' }
-    )
-    .select()
-    .single();
+  // No pisamos usd_cop (tasa manual): solo actualizamos paralelo, BCV y el TRM
+  // de referencia, conservando/heredando la tasa manual del peso.
+  const { data, error } = await upsertAutoRates(service, today, rates, 'manual');
 
   if (error) return { ok: false, error: error.message };
 
@@ -65,14 +55,28 @@ export async function refreshRatesAction() {
   };
 }
 
+// Tasas manuales editables por el admin y su descripción para mensajes de error.
+const MANUAL_RATE_FIELDS = {
+  rino_cop_ves: 'la tasa personalizada Rino (COP→Bs)',
+  usd_cop:      'la tasa USD/COP',
+};
+
 /**
- * Actualiza solo la tasa personalizada (rino_cop_ves) para el día actual.
- * Esta tasa es manual y la define el admin — representa cuántos pesos
- * colombianos equivalen a 1 bolívar (ej. 5.5 COP por 1 Bs).
+ * Actualiza una tasa MANUAL (rino_cop_ves o usd_cop) para el día actual.
  *
- * El precio final en Bs se calcula como: Math.ceil(precio_cop / rino_cop_ves).
+ *   - rino_cop_ves → cuántos pesos colombianos equivalen a 1 bolívar
+ *     (el precio final en Bs = Math.ceil(precio_cop / rino_cop_ves)).
+ *   - usd_cop → cuántos pesos equivale 1 USD; el peso es la moneda base y de
+ *     esta tasa se derivan los precios en USD.
+ *
+ * El upsert por `rate_date` solo toca la columna indicada, así que conserva
+ * las demás tasas del día.
  */
-export async function updateCustomRateAction(value) {
+export async function updateManualRateAction(field, value) {
+  if (!MANUAL_RATE_FIELDS[field]) {
+    return { ok: false, error: 'Tasa no editable' };
+  }
+
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { ok: false, error: 'No autenticado' };
@@ -84,7 +88,7 @@ export async function updateCustomRateAction(value) {
     .single();
 
   if (profile?.role !== 'admin') {
-    return { ok: false, error: 'Solo administradores pueden modificar la tasa personalizada' };
+    return { ok: false, error: `Solo administradores pueden modificar ${MANUAL_RATE_FIELDS[field]}` };
   }
 
   const rate = Number(value);
@@ -100,7 +104,7 @@ export async function updateCustomRateAction(value) {
     .upsert(
       {
         rate_date: today,
-        rino_cop_ves: rate,
+        [field]: rate,
         source: 'manual',
       },
       { onConflict: 'rate_date' }
@@ -142,23 +146,12 @@ export async function ensureFreshRates(maxAgeMinutes = 60) {
 
   const rates = await fetchAllRates();
 
-  if (!rates.usd_ves_paralelo && !rates.usd_ves_bcv && !rates.usd_cop) {
+  if (!rates.usd_ves_paralelo && !rates.usd_ves_bcv && !rates.usd_cop_trm) {
     return { refreshed: false, error: 'fuentes no disponibles' };
   }
 
   const today = todayStr();
-  await service
-    .from('exchange_rates')
-    .upsert(
-      {
-        rate_date: today,
-        usd_ves_paralelo: rates.usd_ves_paralelo,
-        usd_ves_bcv: rates.usd_ves_bcv,
-        usd_cop: rates.usd_cop,
-        source: 'auto',
-      },
-      { onConflict: 'rate_date' }
-    );
+  await upsertAutoRates(service, today, rates, 'auto');
 
   revalidateTag('rates');
   return { refreshed: true };
