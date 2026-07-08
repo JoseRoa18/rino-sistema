@@ -114,9 +114,10 @@ export default function POSInterface({
   const [showNewCustomerForm, setShowNewCustomerForm] = useState(false);
   // Cédula precargada al registrar un cliente nuevo desde el gate de identificación.
   const [gatePrefillDoc, setGatePrefillDoc] = useState('');
-  // Gate de cédula: NO bloquea al entrar; se abre al intentar agregar un
-  // producto sin cliente. Es cerrable (para seguir viendo precios).
-  const [cedulaGateOpen, setCedulaGateOpen] = useState(false);
+  // Gate de cédula: se abre al ENTRAR al POS (y al iniciar cada venta), y al
+  // intentar agregar un producto sin cliente. Es cerrable (para ver precios);
+  // la obligatoriedad real es en el cobro.
+  const [cedulaGateOpen, setCedulaGateOpen] = useState(true);
   const [pendingAdd, setPendingAdd] = useState(null);
   const [showDiscountModal, setShowDiscountModal] = useState(false);
   const [showNoteModal, setShowNoteModal] = useState(false);
@@ -1131,7 +1132,12 @@ export default function POSInterface({
           onClose={() => setShowParkedModal(false)}
         />
       )}
-      {success && <SuccessModal success={success} onClose={() => setSuccess(null)} />}
+      {success && (
+        <SuccessModal
+          success={success}
+          onClose={() => { setSuccess(null); setCedulaGateOpen(true); }}
+        />
+      )}
 
       {/* Gate de cédula: se abre al intentar vender sin cliente. Es cerrable
           (para seguir viendo precios); la obligatoriedad real es en el cobro. */}
