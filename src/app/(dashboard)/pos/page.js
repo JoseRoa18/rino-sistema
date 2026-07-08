@@ -28,7 +28,7 @@ export default async function POSPage() {
     getCachedLatestRate(),
     supabase
       .from('customers')
-      .select('id, name, is_internal')
+      .select('id, name, is_internal, document_id, phone')
       .eq('active', true)
       .order('name'),
   ]);

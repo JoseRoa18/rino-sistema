@@ -10,13 +10,13 @@ const TYPE_OPTIONS = [
   { value: 'eventual',  label: 'Eventual',  desc: 'Compra esporádica' },
 ];
 
-export default function CustomerForm({ initialValue, onClose, onSave }) {
+export default function CustomerForm({ initialValue, prefill, onClose, onSave }) {
   const isEdit = !!initialValue;
   const firstInputRef = useRef(null);
 
   const [form, setForm] = useState({
-    name:             initialValue?.name || '',
-    document_id:      initialValue?.document_id || '',
+    name:             initialValue?.name || prefill?.name || '',
+    document_id:      initialValue?.document_id || prefill?.document_id || '',
     phone:            initialValue?.phone || '',
     email:            initialValue?.email || '',
     address:          initialValue?.address || '',

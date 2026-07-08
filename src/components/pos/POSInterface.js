@@ -11,6 +11,7 @@ import {
 import { createClient } from '@/lib/supabase/client';
 import { formatMoney, convertFromUsd, copToVes } from '@/lib/pricing';
 import CustomerForm from '../CustomerForm';
+import CedulaGate from './CedulaGate';
 import { createCustomerAction } from '@/app/(dashboard)/clientes/actions';
 
 const PAYMENT_METHODS = [
@@ -111,6 +112,8 @@ export default function POSInterface({
 
   const [showCustomerPicker, setShowCustomerPicker] = useState(false);
   const [showNewCustomerForm, setShowNewCustomerForm] = useState(false);
+  // Cédula precargada al registrar un cliente nuevo desde el gate de identificación.
+  const [gatePrefillDoc, setGatePrefillDoc] = useState('');
   const [showDiscountModal, setShowDiscountModal] = useState(false);
   const [showNoteModal, setShowNoteModal] = useState(false);
   const [showParkedModal, setShowParkedModal] = useState(false);
@@ -459,11 +462,14 @@ export default function POSInterface({
       setError(result.error || 'No se pudo crear el cliente');
       return false;
     }
-    // Construye el objeto local con el shape que el POS espera (id, name, is_internal)
+    // Construye el objeto local con el shape que el POS espera. Incluimos
+    // document_id/phone para que el gate y el buscador puedan usarlos.
     const newCustomer = {
       id: result.id,
       name: input.name,
       is_internal: false,
+      document_id: input.document_id || null,
+      phone: input.phone || null,
     };
     setCustomers((prev) =>
       [...prev, newCustomer].sort((a, b) => a.name.localeCompare(b.name, 'es'))
@@ -471,6 +477,7 @@ export default function POSInterface({
     setCustomerId(result.id);
     setShowNewCustomerForm(false);
     setShowCustomerPicker(false);
+    setGatePrefillDoc('');
     setError('');
     return true;
   }
@@ -705,6 +712,13 @@ export default function POSInterface({
       clearAll();
       setSubmitting(false);
       setCartOpen(false);
+      return;
+    }
+
+    // Red de seguridad: toda venta debe tener un cliente identificado (el gate
+    // de cédula lo garantiza, pero validamos también aquí).
+    if (!customerId) {
+      setError('Debes identificar al cliente (cédula) antes de facturar.');
       return;
     }
 
@@ -945,7 +959,7 @@ export default function POSInterface({
           showCustomerPicker={showCustomerPicker}
           onCustomerToggle={() => setShowCustomerPicker((v) => !v)}
           onCustomerSelect={(id) => { setCustomerId(id); setShowCustomerPicker(false); }}
-          onNewCustomer={() => { setShowCustomerPicker(false); setShowNewCustomerForm(true); }}
+          onNewCustomer={() => { setShowCustomerPicker(false); setGatePrefillDoc(''); setShowNewCustomerForm(true); }}
           onPark={parkCurrentSale}
           onShowParked={() => setShowParkedModal(true)}
           parkedCount={parkedSales.length}
@@ -1023,7 +1037,7 @@ export default function POSInterface({
                 showCustomerPicker={showCustomerPicker}
                 onCustomerToggle={() => setShowCustomerPicker((v) => !v)}
                 onCustomerSelect={(id) => { setCustomerId(id); setShowCustomerPicker(false); }}
-                onNewCustomer={() => { setShowCustomerPicker(false); setShowNewCustomerForm(true); }}
+                onNewCustomer={() => { setShowCustomerPicker(false); setGatePrefillDoc(''); setShowNewCustomerForm(true); }}
                 onPark={parkCurrentSale}
                 onShowParked={() => setShowParkedModal(true)}
                 parkedCount={parkedSales.length}
@@ -1097,10 +1111,25 @@ export default function POSInterface({
       )}
       {success && <SuccessModal success={success} onClose={() => setSuccess(null)} />}
 
+      {/* Gate obligatorio: identificar al cliente por cédula antes de facturar.
+          Se muestra al iniciar la venta y tras cada venta (customerId vacío).
+          Se oculta mientras hay un modal de éxito para no solaparse. */}
+      {!customerId && !success && (
+        <CedulaGate
+          customers={customers}
+          role={role}
+          onSelect={(c) => { setCustomerId(c.id); setError(''); }}
+          onRegister={(doc) => { setGatePrefillDoc(doc); setShowNewCustomerForm(true); }}
+          parkedCount={parkedSales.length}
+          onOpenParked={() => setShowParkedModal(true)}
+        />
+      )}
+
       {showNewCustomerForm && (
         <CustomerForm
           initialValue={null}
-          onClose={() => setShowNewCustomerForm(false)}
+          prefill={gatePrefillDoc ? { document_id: gatePrefillDoc } : null}
+          onClose={() => { setShowNewCustomerForm(false); setGatePrefillDoc(''); }}
           onSave={handleCreateCustomer}
         />
       )}
@@ -1530,7 +1559,8 @@ function CustomerPill({ customer, customers, open, onToggle, onSelect, onNew }) 
     : null;
   const [filter, setFilter] = useState('');
   const filtered = customers.filter((c) =>
-    !filter || c.name.toLowerCase().includes(filter.toLowerCase())
+    !filter ||
+    `${c.name} ${c.document_id || ''} ${c.phone || ''}`.toLowerCase().includes(filter.toLowerCase())
   );
 
   return (
@@ -1549,7 +1579,7 @@ function CustomerPill({ customer, customers, open, onToggle, onSelect, onNew }) 
         ) : (
           <>
             <UserIcon className="h-4 w-4" />
-            <span className="hidden sm:inline">Cliente genérico</span>
+            <span className="hidden sm:inline">Cliente</span>
           </>
         )}
         <ChevronDown className="h-3 w-3 text-slate-400" />
@@ -1566,15 +1596,6 @@ function CustomerPill({ customer, customers, open, onToggle, onSelect, onNew }) 
             className="input mb-2 h-8 text-xs"
           />
           <div className="max-h-60 overflow-y-auto">
-            <button
-              onClick={() => onSelect('')}
-              className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs hover:bg-slate-100 dark:hover:bg-slate-800 ${
-                !customer ? 'bg-slate-100 dark:bg-slate-800' : ''
-              }`}
-            >
-              <UserIcon className="h-3.5 w-3.5 text-slate-400" />
-              Cliente genérico
-            </button>
             {filtered.map((c) => (
               <button
                 key={c.id}
