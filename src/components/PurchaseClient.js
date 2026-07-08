@@ -8,7 +8,7 @@ import {
   Truck, Calendar, FileText, AlertCircle, CheckCircle2,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
-import { formatMoney, convertToUsd } from '@/lib/pricing';
+import { formatMoney, copToUsd, copToVes } from '@/lib/pricing';
 
 export default function PurchaseClient({ products, suppliers: initialSuppliers, rate }) {
   const supabase = createClient();
@@ -22,11 +22,12 @@ export default function PurchaseClient({ products, suppliers: initialSuppliers, 
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
   });
-  const [currency, setCurrency] = useState('USD'); // moneda en que se pagó
+  const [currency, setCurrency] = useState('COP'); // moneda en que se pagó
   const [notes, setNotes] = useState('');
 
   // ─── Items ────────────────────────────────────────────────────────────────
-  // Cada item: { tempId, product_id, quantity, unit_cost_usd }
+  // Cada item: { tempId, product_id, quantity, unit_cost_cop }. El costo se
+  // captura en pesos (moneda base); USD/Bs. se derivan.
   const [items, setItems] = useState([]);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerSearch, setPickerSearch] = useState('');
@@ -63,18 +64,24 @@ export default function PurchaseClient({ products, suppliers: initialSuppliers, 
       .slice(0, 30);
   }, [products, pickerSearch, items]);
 
-  // Total de la compra
+  // Total de la compra — el peso es la moneda base; USD/Bs. se derivan.
   const totals = useMemo(() => {
-    let totalUsd = 0;
+    let totalCop = 0;
     for (const it of items) {
       const qty = Number(it.quantity) || 0;
-      const cost = Number(it.unit_cost_usd) || 0;
-      totalUsd += qty * cost;
+      const cost = Number(it.unit_cost_cop) || 0;
+      totalCop += qty * cost;
     }
+    const usdCop = Number(rate?.usd_cop) || 0;
+    const rino = Number(rate?.rino_cop_ves) || 0;
     return {
-      usd: totalUsd,
-      ves: rate?.usd_ves_paralelo ? totalUsd * Number(rate.usd_ves_paralelo) : null,
-      cop: rate?.usd_cop ? totalUsd * Number(rate.usd_cop) : null,
+      cop: totalCop,
+      usd: usdCop > 0 ? copToUsd(totalCop, usdCop) : null,
+      ves: rino > 0
+        ? copToVes(totalCop, rino)
+        : (rate?.usd_ves_paralelo && usdCop > 0
+            ? copToUsd(totalCop, usdCop) * Number(rate.usd_ves_paralelo)
+            : null),
     };
   }, [items, rate]);
 
@@ -85,8 +92,8 @@ export default function PurchaseClient({ products, suppliers: initialSuppliers, 
         tempId: `${Date.now()}-${Math.random()}`,
         product_id: p.id,
         quantity: '1',
-        // Sugerimos el cost_avg actual; el usuario lo ajusta si es distinto
-        unit_cost_usd: p.cost_avg ? Number(p.cost_avg).toFixed(4) : '',
+        // Sugerimos el costo actual en pesos; el usuario lo ajusta si es distinto
+        unit_cost_cop: p.cost_avg_cop ? String(Math.round(Number(p.cost_avg_cop))) : '',
       },
     ]);
     setPickerOpen(false);
@@ -135,9 +142,9 @@ export default function PurchaseClient({ products, suppliers: initialSuppliers, 
     if (items.length === 0) return { ok: false, msg: 'Agrega al menos un producto a la compra' };
     for (const it of items) {
       const qty = Number(it.quantity);
-      const cost = Number(it.unit_cost_usd);
+      const cost = Number(it.unit_cost_cop);
       if (!qty || qty <= 0) return { ok: false, msg: 'Todos los items deben tener cantidad > 0' };
-      if (cost === '' || Number.isNaN(cost) || cost < 0) {
+      if (it.unit_cost_cop === '' || Number.isNaN(cost) || cost < 0) {
         return { ok: false, msg: 'Todos los items deben tener costo unitario válido' };
       }
       const p = productById.get(it.product_id);
@@ -164,7 +171,7 @@ export default function PurchaseClient({ products, suppliers: initialSuppliers, 
       items: items.map((it) => ({
         product_id: it.product_id,
         quantity: Number(it.quantity),
-        unit_cost_usd: Number(it.unit_cost_usd),
+        unit_cost_cop: Number(it.unit_cost_cop),
         expires_at: it.expires_at || null,
         batch_code: (it.batch_code || '').trim() || null,
       })),
@@ -332,7 +339,7 @@ export default function PurchaseClient({ products, suppliers: initialSuppliers, 
                 <option value="COP">Pesos colombianos (COP)</option>
               </select>
               <p className="text-xs text-slate-400">
-                Es referencial. Los costos siempre se almacenan en USD.
+                Es referencial. Los costos se registran en <strong>pesos</strong> (moneda base).
               </p>
             </div>
 
@@ -361,24 +368,24 @@ export default function PurchaseClient({ products, suppliers: initialSuppliers, 
                 <span className="font-semibold text-slate-900 dark:text-slate-100">{items.length}</span>
               </div>
               <div className="flex items-baseline justify-between border-t border-slate-100 pt-2 dark:border-slate-800">
-                <span className="text-slate-500 dark:text-slate-400">USD</span>
+                <span className="text-slate-500 dark:text-slate-400">COP (pesos)</span>
                 <span className="font-mono text-2xl font-bold text-slate-900 dark:text-slate-100">
-                  {formatMoney(totals.usd)}
+                  {formatMoney(totals.cop, 'COP')}
                 </span>
               </div>
-              {totals.ves !== null && (
+              {totals.usd !== null && (
                 <div className="flex items-baseline justify-between text-xs">
-                  <span className="text-slate-400">VES (paralelo)</span>
+                  <span className="text-slate-400">USD</span>
                   <span className="font-mono text-slate-600 dark:text-slate-400">
-                    {formatMoney(totals.ves, 'VES')}
+                    {formatMoney(totals.usd)}
                   </span>
                 </div>
               )}
-              {totals.cop !== null && (
+              {totals.ves !== null && (
                 <div className="flex items-baseline justify-between text-xs">
-                  <span className="text-slate-400">COP</span>
+                  <span className="text-slate-400">Bs.</span>
                   <span className="font-mono text-slate-600 dark:text-slate-400">
-                    {formatMoney(totals.cop, 'COP')}
+                    {formatMoney(totals.ves, 'VES')}
                   </span>
                 </div>
               )}
@@ -422,7 +429,7 @@ export default function PurchaseClient({ products, suppliers: initialSuppliers, 
                     <tr>
                       <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400">Producto</th>
                       <th className="px-3 py-2 text-right text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400">Cantidad</th>
-                      <th className="px-3 py-2 text-right text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400">Costo unit. USD</th>
+                      <th className="px-3 py-2 text-right text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400">Costo unit. COP</th>
                       <th className="px-3 py-2 text-right text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400">Subtotal</th>
                       <th className="px-3 py-2" />
                     </tr>
@@ -431,9 +438,9 @@ export default function PurchaseClient({ products, suppliers: initialSuppliers, 
                     {items.map((it) => {
                       const p = productById.get(it.product_id);
                       const qty = Number(it.quantity) || 0;
-                      const cost = Number(it.unit_cost_usd) || 0;
+                      const cost = Number(it.unit_cost_cop) || 0;
                       const subtotal = qty * cost;
-                      const previousCost = p?.cost_avg ? Number(p.cost_avg) : 0;
+                      const previousCost = p?.cost_avg_cop ? Number(p.cost_avg_cop) : 0;
                       const costChanged = previousCost > 0 && Math.abs(cost - previousCost) / previousCost > 0.01;
                       const tracksExpiry = !!p?.tracks_expiry;
                       return (
@@ -491,20 +498,20 @@ export default function PurchaseClient({ products, suppliers: initialSuppliers, 
                           <td className="px-3 py-2">
                             <input
                               type="number"
-                              step="0.0001"
+                              step="1"
                               min="0"
-                              value={it.unit_cost_usd}
-                              onChange={(e) => updateItem(it.tempId, 'unit_cost_usd', e.target.value)}
+                              value={it.unit_cost_cop}
+                              onChange={(e) => updateItem(it.tempId, 'unit_cost_cop', e.target.value)}
                               className="input !py-1.5 text-right font-mono text-sm"
                             />
                             {costChanged && (
                               <p className="mt-0.5 text-[10px] text-amber-600 dark:text-amber-400">
-                                Antes: ${previousCost.toFixed(4)}
+                                Antes: {formatMoney(previousCost, 'COP')}
                               </p>
                             )}
                           </td>
                           <td className="px-3 py-2 text-right font-mono text-sm font-semibold text-slate-900 dark:text-slate-100">
-                            {formatMoney(subtotal)}
+                            {formatMoney(subtotal, 'COP')}
                           </td>
                           <td className="px-3 py-2 text-right">
                             <button

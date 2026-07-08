@@ -16,7 +16,7 @@ export default async function NewPurchasePage() {
   const [productsRes, suppliersRes, rate] = await Promise.all([
     supabase
       .from('products')
-      .select('id, name, sku, cost_avg, stock, unit, category_id, active, tracks_expiry')
+      .select('id, name, sku, cost_avg, cost_avg_cop, stock, unit, category_id, active, tracks_expiry')
       .eq('active', true)
       .order('name'),
     supabase.from('suppliers').select('id, name, contact_name').eq('active', true).order('name'),

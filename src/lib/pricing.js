@@ -79,6 +79,18 @@ export function convertToUsd(amount, currency, rates) {
 }
 
 /**
+ * Convierte pesos colombianos a dólares usando la tasa USD/COP.
+ * El peso es la moneda base: el USD se DERIVA del peso.
+ *
+ * Ej: copToUsd(5000, 4300) → 1.1628
+ */
+export function copToUsd(amountCop, usdCop) {
+  const rate = Number(usdCop);
+  if (!rate || rate <= 0) return 0;
+  return Number(amountCop || 0) / rate;
+}
+
+/**
  * Convierte pesos colombianos directamente a bolívares usando la tasa
  * personalizada Rino con redondeo hacia arriba.
  *

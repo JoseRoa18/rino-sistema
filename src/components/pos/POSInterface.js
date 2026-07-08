@@ -59,6 +59,16 @@ const formatQty = (q, u) => {
   return String(n);
 };
 
+// Precio de venta en USD DERIVADO del ancla en pesos (price_cop / tasa). Es lo
+// que se graba en la venta para que el ingreso USD cuadre con lo cobrado en
+// pesos a la tasa del día. Si no hay tasa, cae al price_usd almacenado.
+function unitPriceUsdFromCop(item, usdRate) {
+  const cop = item.variant ? Number(item.variant.price_cop || 0) : Number(item.product.price_cop || 0);
+  const fallbackUsd = item.variant ? Number(item.variant.price_usd || 0) : Number(item.product.price_usd || 0);
+  if (usdRate > 0 && cop > 0) return Math.round((cop / usdRate) * 100) / 100;
+  return fallbackUsd;
+}
+
 export default function POSInterface({
   initialProducts,
   initialBestSellers,
@@ -229,16 +239,23 @@ export default function POSInterface({
     // Helpers para extraer el precio efectivo de cada línea, respetando variant.
     // En modo familia el "precio" es el costo equivalente (base_qty × cost_avg
     // si hay variant; cost_avg si no).
+    // El peso es la moneda ancla. El COP es el precio autoritativo; el USD se
+    // DERIVA (price_cop / tasa) para que el ingreso grabado cuadre con lo
+    // efectivamente cobrado en pesos.
     const lineUsd = (it) => {
       if (isFamilyMode) {
         const costPerBase = Number(it.product.cost_avg || 0);
         return it.variant ? costPerBase * Number(it.variant.base_quantity || 1) : costPerBase;
       }
+      if (usdRate > 0) return lineCop(it) / usdRate;
       return it.variant ? Number(it.variant.price_usd || 0) : Number(it.product.price_usd || 0);
     };
     const lineCop = (it) => {
       if (isFamilyMode) {
-        return lineUsd(it) * usdRate;
+        const costCop = Number(it.product.cost_avg_cop || 0);
+        const base = it.variant ? costCop * Number(it.variant.base_quantity || 1) : costCop;
+        return base || (Number(it.product.cost_avg || 0)
+          * (it.variant ? Number(it.variant.base_quantity || 1) : 1) * usdRate);
       }
       if (it.variant) {
         return Number(it.variant.price_cop) || (Number(it.variant.price_usd) * usdRate);
@@ -749,9 +766,7 @@ export default function POSInterface({
           ? `${it.product.name} (${it.variant.name})`
           : it.product.name,
         quantity: it.qty,
-        unit_price_usd: it.variant
-          ? Number(it.variant.price_usd || 0)
-          : Number(it.product.price_usd || 0),
+        unit_price_usd: unitPriceUsdFromCop(it, Number(rates?.usd_cop) || 0),
         variant_id: it.variant?.id || null,
       })),
     };
@@ -1117,33 +1132,27 @@ function ProductCard({ product: p, variant, rank, catName, rates, onAdd, familyM
   const paraleloRate = Number(rates?.usd_ves_paralelo) || 0;
   const usdCop = Number(rates?.usd_cop) || 0;
 
-  // USD base: variant.price_usd / product.price_usd / cost_avg (familia)
-  let usdValue;
+  // El peso es la moneda ancla: el COP es el precio autoritativo y el USD se
+  // DERIVA (price_cop / tasa), para que la tarjeta muestre lo mismo que se cobra
+  // y se graba. En modo familia el USD sigue siendo el cost_avg (así factura el
+  // servidor) y el COP su equivalente en pesos (cost_avg_cop).
+  let priceCop, usdValue;
   if (familyMode) {
-    const costPerBase = Number(p.cost_avg) || 0;
-    usdValue = variant ? costPerBase * baseQty : costPerBase;
+    const costCop = Number(p.cost_avg_cop) || 0;
+    priceCop = (variant ? costCop * baseQty : costCop)
+      || ((Number(p.cost_avg) || 0) * (variant ? baseQty : 1) * usdCop);
+    usdValue = (Number(p.cost_avg) || 0) * (variant ? baseQty : 1);
   } else {
-    usdValue = variant ? Number(variant.price_usd || 0) : Number(p.price_usd || 0);
+    priceCop = variant
+      ? (Number(variant.price_cop) || Number(variant.price_usd || 0) * usdCop)
+      : (Number(p.price_cop) || Number(p.price_usd || 0) * usdCop);
+    usdValue = usdCop > 0
+      ? priceCop / usdCop
+      : (variant ? Number(variant.price_usd || 0) : Number(p.price_usd || 0));
   }
-
-  // COP y Bs. con la regla del negocio
-  let priceCop, priceVes;
-  if (familyMode) {
-    priceCop = usdValue * usdCop;
-    priceVes = rinoRate > 0 && priceCop > 0
-      ? copToVes(priceCop, rinoRate)
-      : usdValue * paraleloRate;
-  } else if (variant) {
-    priceCop = Number(variant.price_cop) || (usdValue * usdCop);
-    priceVes = rinoRate > 0
-      ? copToVes(priceCop, rinoRate)
-      : usdValue * paraleloRate;
-  } else {
-    priceCop = Number(p.price_cop) || (usdValue * usdCop);
-    priceVes = rinoRate > 0
-      ? copToVes(priceCop, rinoRate)
-      : usdValue * paraleloRate;
-  }
+  const priceVes = rinoRate > 0 && priceCop > 0
+    ? copToVes(priceCop, rinoRate)
+    : usdValue * paraleloRate;
   return (
     <button
       onClick={onAdd}

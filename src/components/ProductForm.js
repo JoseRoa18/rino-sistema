@@ -3,7 +3,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { X, Calculator, TrendingUp, Lock, AlertTriangle, Plus, Trash2, Layers } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
-import { priceWithMargin, copToVes } from '@/lib/pricing';
+import { copToVes, copToUsd } from '@/lib/pricing';
 
 const UNIT_OPTIONS = [
   { value: 'unidad', label: 'Unidad', fractional: false },
@@ -61,6 +61,7 @@ export default function ProductForm({ product, categories, rates, onClose, onSav
     description: product?.description || '',
     category_id: product?.category_id || '',
     cost_avg: product?.cost_avg ?? 0,
+    cost_avg_cop: product?.cost_avg_cop ?? 0,
     target_margin: product?.target_margin ?? 30,
     price_usd: product?.price_usd ?? 0,
     price_ves: product?.price_ves ?? 0,
@@ -73,8 +74,10 @@ export default function ProductForm({ product, categories, rates, onClose, onSav
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const [sourceCurrency, setSourceCurrency] = useState('USD');
-  const [costSourceCurrency, setCostSourceCurrency] = useState('USD');
+  // El peso (COP) es la moneda ancla: es la fuente por defecto y de ella se
+  // derivan USD y Bs.
+  const [sourceCurrency, setSourceCurrency] = useState('COP');
+  const [costSourceCurrency, setCostSourceCurrency] = useState('COP');
 
   const rateVes = Number(rates?.usd_ves_paralelo) || 0;
   const rateCop = Number(rates?.usd_cop) || 0;
@@ -85,8 +88,11 @@ export default function ProductForm({ product, categories, rates, onClose, onSav
   // usuario el draft de la moneda fuente; las otras dos se calculan en vivo
   // a partir del draft fuente (NO se hace round-trip por USD para evitar
   // pérdida de precisión).
-  const [costDraftUsd, setCostDraftUsd] = useState(String(product?.cost_avg ?? 0));
-  const [costDraftCop, setCostDraftCop] = useState('');
+  // El costo se siembra desde el ancla en pesos (cost_avg_cop). Así, editar un
+  // producto sin tocar el costo re-guarda el MISMO peso (idempotente) y no pisa
+  // el promedio ponderado que mantiene el trigger de compras.
+  const [costDraftUsd, setCostDraftUsd] = useState('');
+  const [costDraftCop, setCostDraftCop] = useState(String(product?.cost_avg_cop ?? 0));
   const [costDraftVes, setCostDraftVes] = useState('');
 
   // Presentaciones de venta (variants). Cada item: { id?, name, base_quantity,
@@ -138,6 +144,19 @@ export default function ProductForm({ product, categories, rates, onClose, onSav
     setVariants((prev) => prev.map((v, i) => (i === idx ? { ...v, [field]: value } : v)));
   }
 
+  // La presentación se ancla en pesos: al editar su COP, derivamos USD y Bs.
+  function updateVariantFromCop(idx, value) {
+    const cop = Number(value) || 0;
+    setVariants((prev) => prev.map((v, i) => {
+      if (i !== idx) return v;
+      const usd = rateCop > 0 ? round2(cop / rateCop) : v.price_usd;
+      const ves = rinoCopVes > 0
+        ? copToVes(cop, rinoCopVes)
+        : (rateCop > 0 && rateVes > 0 ? round2((cop / rateCop) * rateVes) : v.price_ves);
+      return { ...v, price_cop: value, price_usd: usd, price_ves: ves };
+    }));
+  }
+
   function removeVariant(idx) {
     setVariants((prev) => {
       const v = prev[idx];
@@ -187,14 +206,42 @@ export default function ProductForm({ product, categories, rates, onClose, onSav
     setForm((prev) => ({ ...prev, [field]: value }));
   }
 
+  // Bs. derivado desde pesos: preferimos la tasa Rino (igual que el POS);
+  // fallback a USD × paralelo si no hay Rino.
+  function vesFromCop(cop, usd) {
+    if (rinoCopVes > 0) return copToVes(cop, rinoCopVes);
+    return rateVes > 0 ? round2(usd * rateVes) : 0;
+  }
+
+  function updateFromCop(value) {
+    const cop = Number(value) || 0;
+    setSourceCurrency('COP');
+    if (!hasRates) {
+      setForm((prev) => ({ ...prev, price_cop: value }));
+      return;
+    }
+    const usd = rateCop > 0 ? cop / rateCop : 0;
+    setForm((prev) => ({
+      ...prev,
+      price_cop: value,
+      price_usd: round2(usd),
+      price_ves: vesFromCop(cop, usd),
+    }));
+  }
+
   function updateFromUsd(value) {
     const usd = Number(value) || 0;
     setSourceCurrency('USD');
+    if (!hasRates) {
+      setForm((prev) => ({ ...prev, price_usd: value }));
+      return;
+    }
+    const cop = round0(usd * rateCop);
     setForm((prev) => ({
       ...prev,
       price_usd: value,
-      price_ves: hasRates ? round2(usd * rateVes) : prev.price_ves,
-      price_cop: hasRates ? round0(usd * rateCop) : prev.price_cop,
+      price_cop: cop,
+      price_ves: vesFromCop(cop, usd),
     }));
   }
 
@@ -205,36 +252,38 @@ export default function ProductForm({ product, categories, rates, onClose, onSav
       setForm((prev) => ({ ...prev, price_ves: value }));
       return;
     }
-    const usd = ves / rateVes;
+    let cop, usd;
+    if (rinoCopVes > 0 && rateCop > 0) {
+      cop = round0(ves * rinoCopVes);
+      usd = round2(cop / rateCop);
+    } else {
+      usd = round2(ves / rateVes);
+      cop = round0(usd * rateCop);
+    }
     setForm((prev) => ({
       ...prev,
       price_ves: value,
-      price_usd: round2(usd),
-      price_cop: round0(usd * rateCop),
+      price_usd: usd,
+      price_cop: cop,
     }));
   }
 
-  function updateFromCop(value) {
-    const cop = Number(value) || 0;
-    setSourceCurrency('COP');
-    if (!hasRates) {
-      setForm((prev) => ({ ...prev, price_cop: value }));
-      return;
+  // Helpers: dada una moneda fuente y su valor, calcula el equivalente en COP
+  // (moneda ancla) y en USD (derivado).
+  function costToCop(source, raw) {
+    const n = Number(raw) || 0;
+    if (source === 'COP') return n;
+    if (source === 'USD') return n * rateCop;
+    if (source === 'VES') {
+      if (rinoCopVes > 0) return n * rinoCopVes;
+      if (rateVes > 0 && rateCop > 0) return (n / rateVes) * rateCop;
     }
-    const usd = cop / rateCop;
-    setForm((prev) => ({
-      ...prev,
-      price_cop: value,
-      price_usd: round2(usd),
-      price_ves: round2(usd * rateVes),
-    }));
+    return 0;
   }
-
-  // Helper: dada una moneda fuente y su valor, calcula el USD equivalente.
   function costToUsd(source, raw) {
     const n = Number(raw) || 0;
     if (source === 'USD') return n;
-    if (source === 'COP') return rateCop > 0 ? n / rateCop : 0;
+    if (source === 'COP') return copToUsd(n, rateCop);
     if (source === 'VES') {
       if (rinoCopVes > 0 && rateCop > 0) return (n * rinoCopVes) / rateCop;
       if (rateVes > 0) return n / rateVes;
@@ -243,37 +292,42 @@ export default function ProductForm({ product, categories, rates, onClose, onSav
   }
 
   // Una sola función que cubre las 3 fuentes: actualiza el draft de la moneda
-  // fuente, deja los otros drafts intactos (se mostrarán como Calculados
-  // derivados del draft fuente), y propaga el USD al cost_avg + precio sugerido.
+  // fuente y propaga el COSTO EN PESOS (ancla) al form, derivando el costo USD
+  // y el precio de venta sugerido (margen sobre el costo en pesos).
   function updateCostByCurrency(source, value) {
     if (source === 'USD') setCostDraftUsd(value);
     else if (source === 'COP') setCostDraftCop(value);
     else if (source === 'VES') setCostDraftVes(value);
     setCostSourceCurrency(source);
+
+    const cop = costToCop(source, value);
     const usd = costToUsd(source, value);
     const margin = Number(form.target_margin) || 0;
-    const suggestedUsd = priceWithMargin(usd, margin);
-    setSourceCurrency('USD');
+    const suggestedCop = round0(cop * (1 + margin / 100));
+    const suggestedUsd = rateCop > 0 ? round2(suggestedCop / rateCop) : 0;
+    setSourceCurrency('COP');
     setForm((prev) => ({
       ...prev,
+      cost_avg_cop: cop,
       cost_avg: usd,
-      price_usd: suggestedUsd,
-      price_ves: hasRates ? round2(suggestedUsd * rateVes) : prev.price_ves,
-      price_cop: hasRates ? round0(suggestedUsd * rateCop) : prev.price_cop,
+      price_cop: suggestedCop,
+      price_usd: hasRates ? suggestedUsd : prev.price_usd,
+      price_ves: hasRates ? vesFromCop(suggestedCop, suggestedUsd) : prev.price_ves,
     }));
   }
 
   function updateMargin(value) {
     const margin = Number(value) || 0;
-    const cost = Number(form.cost_avg) || 0;
-    const suggestedUsd = priceWithMargin(cost, margin);
-    setSourceCurrency('USD');
+    const cop = Number(form.cost_avg_cop) || 0;
+    const suggestedCop = round0(cop * (1 + margin / 100));
+    const suggestedUsd = rateCop > 0 ? round2(suggestedCop / rateCop) : 0;
+    setSourceCurrency('COP');
     setForm((prev) => ({
       ...prev,
       target_margin: value,
-      price_usd: suggestedUsd,
-      price_ves: hasRates ? round2(suggestedUsd * rateVes) : prev.price_ves,
-      price_cop: hasRates ? round0(suggestedUsd * rateCop) : prev.price_cop,
+      price_cop: suggestedCop,
+      price_usd: hasRates ? suggestedUsd : prev.price_usd,
+      price_ves: hasRates ? vesFromCop(suggestedCop, suggestedUsd) : prev.price_ves,
     }));
   }
 
@@ -293,11 +347,22 @@ export default function ProductForm({ product, categories, rates, onClose, onSav
       name: form.name,
       description: form.description || null,
       category_id: form.category_id || null,
-      cost_avg: Number(form.cost_avg) || 0,
+      // El peso es el ancla; el USD se deriva a la tasa efectiva del día.
+      cost_avg_cop: Number(form.cost_avg_cop) || 0,
+      cost_avg: rateCop > 0
+        ? Math.round(((Number(form.cost_avg_cop) || 0) / rateCop) * 10000) / 10000
+        : (Number(form.cost_avg) || 0),
       target_margin: Number(form.target_margin) || 0,
-      price_usd: Number(form.price_usd) || 0,
-      price_ves: Number(form.price_ves) || 0,
+      // price_cop es el precio autoritativo; USD y Bs. se derivan de él.
       price_cop: Number(form.price_cop) || 0,
+      price_usd: rateCop > 0
+        ? round2((Number(form.price_cop) || 0) / rateCop)
+        : (Number(form.price_usd) || 0),
+      price_ves: rinoCopVes > 0
+        ? copToVes(Number(form.price_cop) || 0, rinoCopVes)
+        : (rateCop > 0 && rateVes > 0
+            ? round2(((Number(form.price_cop) || 0) / rateCop) * rateVes)
+            : (Number(form.price_ves) || 0)),
       stock: Number(form.stock) || 0,
       min_stock: Number(form.min_stock) || 0,
       unit: form.unit,
@@ -465,20 +530,20 @@ export default function ProductForm({ product, categories, rates, onClose, onSav
             </legend>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <PriceInput
+                label="COP (pesos)"
+                currency="COP"
+                step="1"
+                value={costSourceCurrency === 'COP' ? costDraftCop : (displayedCosts.cop ? round0(displayedCosts.cop) : '')}
+                onChange={(v) => updateCostByCurrency('COP', v)}
+                sourceCurrency={costSourceCurrency}
+                hasRates={hasRates}
+              />
+              <PriceInput
                 label="USD"
                 currency="USD"
                 step="0.0001"
                 value={costSourceCurrency === 'USD' ? costDraftUsd : round2(displayedCosts.usd)}
                 onChange={(v) => updateCostByCurrency('USD', v)}
-                sourceCurrency={costSourceCurrency}
-                hasRates={hasRates}
-              />
-              <PriceInput
-                label="COP"
-                currency="COP"
-                step="1"
-                value={costSourceCurrency === 'COP' ? costDraftCop : (displayedCosts.cop ? round0(displayedCosts.cop) : '')}
-                onChange={(v) => updateCostByCurrency('COP', v)}
                 sourceCurrency={costSourceCurrency}
                 hasRates={hasRates}
               />
@@ -493,7 +558,7 @@ export default function ProductForm({ product, categories, rates, onClose, onSav
               />
             </div>
             <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-              Edita la moneda que prefieras. Las otras dos se calculan con la tasa del día. El USD se actualiza también al registrar compras (promedio ponderado).
+              El costo se ingresa en <strong>pesos</strong> (moneda base); USD y Bs. se calculan con la tasa del día. El costo en pesos se actualiza también al registrar compras (promedio ponderado).
             </p>
           </fieldset>
 
@@ -538,6 +603,15 @@ export default function ProductForm({ product, categories, rates, onClose, onSav
             </legend>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <PriceInput
+                label="COP (pesos)"
+                currency="COP"
+                step="1"
+                value={form.price_cop}
+                onChange={updateFromCop}
+                sourceCurrency={sourceCurrency}
+                hasRates={hasRates}
+              />
+              <PriceInput
                 label="USD"
                 currency="USD"
                 step="0.01"
@@ -555,19 +629,10 @@ export default function ProductForm({ product, categories, rates, onClose, onSav
                 sourceCurrency={sourceCurrency}
                 hasRates={hasRates}
               />
-              <PriceInput
-                label="COP"
-                currency="COP"
-                step="1"
-                value={form.price_cop}
-                onChange={updateFromCop}
-                sourceCurrency={sourceCurrency}
-                hasRates={hasRates}
-              />
             </div>
             <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-              Edita la moneda que prefieras como fuente. Las otras dos se calculan con la tasa
-              paralelo / COP del día.
+              El precio se define en <strong>pesos</strong> (moneda base); USD y Bs. se calculan con la
+              tasa USD/COP y la tasa Rino COP→Bs del día.
             </p>
           </fieldset>
 
@@ -659,6 +724,16 @@ export default function ProductForm({ product, categories, rates, onClose, onSav
                           placeholder="30"
                         />
                       </div>
+                      <div className="col-span-6 sm:col-span-2">
+                        <label className="text-[10px] uppercase tracking-wide text-slate-400">COP</label>
+                        <input
+                          type="number"
+                          step="1"
+                          className="input h-8 text-sm"
+                          value={v.price_cop}
+                          onChange={(e) => updateVariantFromCop(idx, e.target.value)}
+                        />
+                      </div>
                       <div className="col-span-8 sm:col-span-2">
                         <label className="text-[10px] uppercase tracking-wide text-slate-400">USD</label>
                         <input
@@ -667,16 +742,6 @@ export default function ProductForm({ product, categories, rates, onClose, onSav
                           className="input h-8 text-sm"
                           value={v.price_usd}
                           onChange={(e) => updateVariant(idx, 'price_usd', e.target.value)}
-                        />
-                      </div>
-                      <div className="col-span-6 sm:col-span-2">
-                        <label className="text-[10px] uppercase tracking-wide text-slate-400">COP</label>
-                        <input
-                          type="number"
-                          step="1"
-                          className="input h-8 text-sm"
-                          value={v.price_cop}
-                          onChange={(e) => updateVariant(idx, 'price_cop', e.target.value)}
                         />
                       </div>
                       <div className="col-span-6 sm:col-span-2">
