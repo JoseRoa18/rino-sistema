@@ -114,6 +114,10 @@ export default function POSInterface({
   const [showNewCustomerForm, setShowNewCustomerForm] = useState(false);
   // Cédula precargada al registrar un cliente nuevo desde el gate de identificación.
   const [gatePrefillDoc, setGatePrefillDoc] = useState('');
+  // Gate de cédula: NO bloquea al entrar; se abre al intentar agregar un
+  // producto sin cliente. Es cerrable (para seguir viendo precios).
+  const [cedulaGateOpen, setCedulaGateOpen] = useState(false);
+  const [pendingAdd, setPendingAdd] = useState(null);
   const [showDiscountModal, setShowDiscountModal] = useState(false);
   const [showNoteModal, setShowNoteModal] = useState(false);
   const [showParkedModal, setShowParkedModal] = useState(false);
@@ -478,11 +482,28 @@ export default function POSInterface({
     setShowNewCustomerForm(false);
     setShowCustomerPicker(false);
     setGatePrefillDoc('');
+    setCedulaGateOpen(false);
+    // Si el registro vino del gate por intentar agregar un producto, lo agregamos.
+    const pending = pendingAdd;
+    setPendingAdd(null);
+    if (pending) performAddToCart(pending.product, pending.variant);
     setError('');
     return true;
   }
 
+  // Agregar al carrito exige cliente identificado. Si no hay, guardamos el
+  // producto pendiente y abrimos el gate (cerrable); al identificar se agrega.
   function addToCart(product, variant = null) {
+    if (product.stock <= 0) return;
+    if (!customerId) {
+      setPendingAdd({ product, variant });
+      setCedulaGateOpen(true);
+      return;
+    }
+    performAddToCart(product, variant);
+  }
+
+  function performAddToCart(product, variant = null) {
     if (product.stock <= 0) return;
     const key = `${product.id}|${variant?.id || ''}`;
     const baseQty = variant ? Number(variant.base_quantity) || 1 : 1;
@@ -715,10 +736,11 @@ export default function POSInterface({
       return;
     }
 
-    // Red de seguridad: toda venta debe tener un cliente identificado (el gate
-    // de cédula lo garantiza, pero validamos también aquí).
+    // Obligatorio: no se puede registrar la venta sin cliente identificado.
+    // Reabrimos el gate para que lo identifiquen.
     if (!customerId) {
-      setError('Debes identificar al cliente (cédula) antes de facturar.');
+      setError('Identifica al cliente para poder facturar.');
+      setCedulaGateOpen(true);
       return;
     }
 
@@ -1111,15 +1133,22 @@ export default function POSInterface({
       )}
       {success && <SuccessModal success={success} onClose={() => setSuccess(null)} />}
 
-      {/* Gate obligatorio: identificar al cliente por cédula antes de facturar.
-          Se muestra al iniciar la venta y tras cada venta (customerId vacío).
-          Se oculta mientras hay un modal de éxito para no solaparse. */}
-      {!customerId && !success && (
+      {/* Gate de cédula: se abre al intentar vender sin cliente. Es cerrable
+          (para seguir viendo precios); la obligatoriedad real es en el cobro. */}
+      {cedulaGateOpen && !success && (
         <CedulaGate
           customers={customers}
           role={role}
-          onSelect={(c) => { setCustomerId(c.id); setError(''); }}
+          onSelect={(c) => {
+            setCustomerId(c.id);
+            setError('');
+            setCedulaGateOpen(false);
+            const pending = pendingAdd;
+            setPendingAdd(null);
+            if (pending) performAddToCart(pending.product, pending.variant);
+          }}
           onRegister={(doc) => { setGatePrefillDoc(doc); setShowNewCustomerForm(true); }}
+          onClose={() => { setCedulaGateOpen(false); setPendingAdd(null); }}
           parkedCount={parkedSales.length}
           onOpenParked={() => setShowParkedModal(true)}
         />

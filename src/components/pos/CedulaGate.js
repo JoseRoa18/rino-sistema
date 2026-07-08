@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useRef, useState, useEffect } from 'react';
-import { IdCard, Search, UserPlus, ArrowRight, Users, Pause } from 'lucide-react';
+import { IdCard, Search, UserPlus, ArrowRight, Users, Pause, X } from 'lucide-react';
 
 // Normaliza una cédula/RIF quitando separadores para comparar sin importar el
 // formato (V-12.345.678 == v12345678).
@@ -13,7 +13,7 @@ const normDoc = (s) => String(s || '').replace(/[^0-9a-zA-Z]/g, '').toLowerCase(
  * Como respaldo (cliente sin cédula a mano o consumo familiar) permite buscar
  * por nombre sobre los clientes ya cargados.
  */
-export default function CedulaGate({ customers, role, onSelect, onRegister, parkedCount = 0, onOpenParked }) {
+export default function CedulaGate({ customers, role, onSelect, onRegister, onClose, parkedCount = 0, onOpenParked }) {
   const [doc, setDoc] = useState('');
   const [searched, setSearched] = useState(false);
   const [nameMode, setNameMode] = useState(false);
@@ -22,6 +22,12 @@ export default function CedulaGate({ customers, role, onSelect, onRegister, park
   const canFamily = role === 'admin' || role === 'supervisor';
 
   useEffect(() => { inputRef.current?.focus(); }, [nameMode]);
+
+  useEffect(() => {
+    function onKey(e) { if (e.key === 'Escape' && onClose) onClose(); }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
 
   const docMatches = useMemo(() => {
     const t = normDoc(doc);
@@ -47,18 +53,30 @@ export default function CedulaGate({ customers, role, onSelect, onRegister, park
   }
 
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/70 p-4 backdrop-blur-sm">
-      <div className="card w-full max-w-md p-6">
-        <div className="mb-4 flex items-center gap-3">
+    <div
+      className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/70 p-4 backdrop-blur-sm"
+      onClick={() => onClose && onClose()}
+    >
+      <div className="card w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-4 flex items-start gap-3">
           <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-brand-100 text-brand-700 dark:bg-brand-500/15 dark:text-brand-400">
             <IdCard className="h-5 w-5" />
           </div>
-          <div>
+          <div className="flex-1">
             <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">Identificar cliente</h2>
             <p className="text-xs text-slate-500 dark:text-slate-400">
               Ingresa la cédula o RIF del cliente para comenzar la venta
             </p>
           </div>
+          {onClose && (
+            <button
+              onClick={onClose}
+              className="-mr-1 -mt-1 rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+              aria-label="Cerrar"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          )}
         </div>
 
         {!nameMode ? (
