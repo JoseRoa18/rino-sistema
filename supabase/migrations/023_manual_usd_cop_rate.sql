@@ -8,11 +8,12 @@
 -- tasa `usd_cop` deja de bajarse automáticamente del TRM y pasa a ser
 -- MANUAL (la fija el admin en /tasas, igual que la tasa Rino COP→VES).
 --
--- El TRM automático (DolarApi) se sigue trayendo, pero solo como REFERENCIA
--- visible, en la nueva columna `usd_cop_trm`. Ya no se usa en los cálculos.
+-- El TRM automático (DolarApi) se sigue trayendo en la nueva columna
+-- `usd_cop_trm`. Sirve de RESPALDO: si el admin no fijó `usd_cop` manual, los
+-- cálculos usan el TRM; si la fijó, mandan la manual.
 --
---   usd_cop      → tasa MANUAL usada en los cálculos de precios
---   usd_cop_trm  → TRM automático, solo referencia
+--   usd_cop      → tasa MANUAL del admin; si está, manda en los cálculos
+--   usd_cop_trm  → TRM automático; referencia y respaldo cuando no hay manual
 -- =========================================================================
 
 begin;

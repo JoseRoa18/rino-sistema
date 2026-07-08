@@ -180,12 +180,19 @@ export default function RatesClient({ initialRates, role }) {
           placeholder="Ej: 4300"
           editHint="Cuántos pesos equivale 1 USD"
           footer={
-            <>
-              Moneda base · se usa en los cálculos de precios
-              {today?.usd_cop_trm && (
-                <span className="ml-1">· TRM {Number(today.usd_cop_trm).toFixed(0)}</span>
-              )}
-            </>
+            Number(today?.usd_cop) > 0 ? (
+              <>
+                Moneda base · usada en los cálculos
+                {today?.usd_cop_trm && (
+                  <span className="ml-1">· TRM ref. {Number(today.usd_cop_trm).toFixed(0)}</span>
+                )}
+              </>
+            ) : (
+              <>
+                Sin definir · se usa el TRM{' '}
+                {today?.usd_cop_trm ? Number(today.usd_cop_trm).toFixed(0) : '—'} como respaldo
+              </>
+            )
           }
           accent="violet"
         />
